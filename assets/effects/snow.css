@@ -1,0 +1,41 @@
+/* Contenitore overlay neve */
+.snow-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999999;
+  overflow: hidden;
+}
+
+/* Singolo fiocco */
+.snowflake {
+  position: absolute;
+  top: -10vh;
+  /* Snow must be visible even on white backgrounds */
+  color: #ffffff !important;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-shadow:
+    0 1px 2px rgba(0,0,0,0.55),
+    0 0 8px rgba(0,0,0,0.25),
+    0 0 10px rgba(255,255,255,0.35);
+  will-change: transform, opacity;
+  opacity: 0;
+  animation-name: snowfall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Animazione caduta fiocco */
+@keyframes snowfall {
+  0% {
+    transform: translate3d(0, -10vh, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--opacity, 0.8);
+  }
+  100% {
+    transform: translate3d(var(--x-move, 0), 110vh, 0);
+    opacity: 0;
+  }
+}

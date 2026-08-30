@@ -1,0 +1,22 @@
+/* Effetto Capodanno - Coriandoli */
+.ltc-confetti-wrap {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999999;
+    overflow: hidden;
+}
+
+.confetto {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    top: -20px;
+    will-change: transform;
+    animation: confettiFall linear forwards;
+}
+
+@keyframes confettiFall {
+    0% { transform: translateY(0) rotate(0deg) translateX(0); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg) translateX(50px); opacity: 0; }
+}

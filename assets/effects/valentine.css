@@ -1,0 +1,36 @@
+/* Valentine hearts particles (optimized: CSS animation) */
+.langa-heart{
+  position:fixed;
+  pointer-events:none;
+  z-index:999999;
+  width:12px;
+  height:12px;
+  background:rgba(255, 62, 130, 0.9);
+  border-radius:2px;
+  box-shadow:0 0 6px rgba(255,62,130,.35);
+  transform:translate(-50%,-50%) rotate(45deg);
+  will-change: transform, opacity;
+  animation: langaHeartFloat var(--dur, 1100ms) ease-out forwards;
+}
+
+.langa-heart-bubble{
+  position:absolute;
+  width:12px;
+  height:12px;
+  background:inherit;
+  border-radius:50%;
+}
+.langa-heart-b1{left:-6px; top:0;}
+.langa-heart-b2{left:0; top:-6px;}
+
+@keyframes langaHeartFloat{
+  0%{
+    opacity:1;
+    transform:translate(-50%,-50%) rotate(45deg) rotate(var(--rot,0deg)) scale(1);
+  }
+  100%{
+    opacity:0;
+    transform:translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, -70px)))
+      rotate(45deg) rotate(var(--rot,0deg)) scale(var(--scale,1.2));
+  }
+}

@@ -1,0 +1,16 @@
+/**
+ * Minimal Select2-compatible styles
+ * For LANGA Tools credits form only
+ * @version 1.0.0
+ */
+.select2-container{box-sizing:border-box;display:inline-block;margin:0;position:relative;vertical-align:middle}
+.select2-container .select2-selection--multiple{min-height:36px}
+.select2-container--default .select2-selection--multiple{border:1px solid #ddd;border-radius:4px;cursor:text}
+.select2-container--default .select2-selection--multiple .select2-selection__choice{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#f0f0f0;border-radius:3px;font-size:12px;white-space:nowrap;margin:2px}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove{cursor:pointer;font-weight:bold;color:#999;padding-right:4px;border-right:none}
+.select2-container--default.select2-container--focus .select2-selection--multiple{border-color:#aaa}
+.select2-dropdown{position:absolute;z-index:99999;background:#fff;border:1px solid #ddd;border-radius:0 0 4px 4px;max-height:200px;overflow-y:auto}
+.select2-results__option{padding:6px 10px;cursor:pointer;font-size:13px}
+.select2-results__option--highlighted.select2-results__option--selectable{background:#0073aa;color:#fff}
+.select2-results__option--selectable:hover{background:#f0f0f0}
+.select2-search__field{border:none!important;outline:none!important}

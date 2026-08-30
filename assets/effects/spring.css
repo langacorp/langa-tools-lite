@@ -1,0 +1,25 @@
+#ltc-spring-wrap{ pointer-events:none; }
+
+.ltc-spring-float{
+  position:absolute;
+  top:-10vh;
+  opacity:.95;
+  animation-name: ltcSpringFloat;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: 1;
+  will-change: transform, opacity;
+  /* Prevent "fat" emoji outlines caused by theme/global text effects */
+  font-family: "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui,sans-serif;
+  font-weight: 400;
+  line-height: 1;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 transparent !important;
+  filter: none !important;
+}
+
+@keyframes ltcSpringFloat{
+  0%   { transform: translate3d(0,-10vh,0) rotate(-6deg); opacity:0; }
+  12%  { opacity:1; }
+  50%  { transform: translate3d(2vw,45vh,0) rotate(6deg); opacity:1; }
+  100% { transform: translate3d(-2vw,115vh,0) rotate(-8deg); opacity:0; }
+}

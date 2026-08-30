@@ -1,0 +1,9 @@
+/* LANGA Tools Effect: autumn (falling leaves) */
+.langa-effect-canvas.langa-effect-autumn{
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  pointer-events:none;
+  z-index:999999;
+}
