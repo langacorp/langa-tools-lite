@@ -671,8 +671,8 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
   echo '<div style="padding:16px 20px;border-bottom:1px solid #f0f0f0">';
   echo '<table class="form-table" role="presentation" style="margin:0">';
   echo '<tr><th scope="row" style="width:80px;padding:6px 0;font-size:13px">Server</th><td style="padding:6px 0"><code style="font-size:12px">https://tools.langa.tv</code></td></tr>';
-  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Site Key</th><td style="padding:6px 0"><input type="text" disabled class="regular-text" style="width:100%;font-family:monospace;font-size:12px" value="ak3nP937x22z13C5up"></td></tr>';
-  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Secret</th><td style="padding:6px 0"><input type="text" disabled class="regular-text" style="width:100%;font-family:monospace;font-size:12px" value="Rfd31hBa8pccT7vS6p1fGMb63"></td></tr>';
+  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Site Key</th><td style="padding:6px 0"><input type="text" disabled class="regular-text" style="width:100%;font-family:monospace;font-size:12px" value="SITE-KEY-EXAMPLE-0000"></td></tr>';
+  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Secret</th><td style="padding:6px 0"><input type="text" disabled class="regular-text" style="width:100%;font-family:monospace;font-size:12px" value="SECRET-EXAMPLE-000000000"></td></tr>';
   echo '</table></div>';
   // License info section (same as PRO)
   echo '<div style="padding:16px 20px">';
