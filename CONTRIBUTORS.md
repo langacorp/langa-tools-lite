@@ -2,7 +2,8 @@
 
 LANGA Tools Lite is developed and owned by LANGA Corporation S.r.l.
 
-- **Nabil Kerkacha** — plugin architecture, module system, admin interface
+The plugin declares `LANGA` as author and `langaofficial` as contributor on the
+WordPress plugin directory. No individual attribution is claimed here, because
+none is recorded in the plugin itself.
 
-The plugin is distributed on the official WordPress plugin directory:
-https://wordpress.org/plugins/langa-tools-lite/
+Canonical release: https://wordpress.org/plugins/langa-tools-lite/
