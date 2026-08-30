@@ -212,8 +212,9 @@ function langa_tools_client_visual_sitemap_shortcode($atts = array(), $content =
   $htxt = !empty($vs['hover_text_color']) ? $vs['hover_text_color'] : '#111827';
   $line = !empty($vs['line_color']) ? $vs['line_color'] : '#d6d3d1';
   $radius = isset($vs['radius']) ? max(0, min(40, (int)$vs['radius'])) : 5;
-  
-  
+  $custom_css = isset($vs['custom_css']) ? (string)$vs['custom_css'] : '';
+  $custom_css = str_replace("\0", '', $custom_css);
+  if (strlen($custom_css) > 20000) $custom_css = substr($custom_css, 0, 20000);
 
 
   $sort_by = !empty($vs['sort_by']) ? sanitize_key($vs['sort_by']) : 'menu_order';
@@ -343,7 +344,7 @@ function langa_tools_client_visual_sitemap_shortcode($atts = array(), $content =
   .langa-vs-tree a{display:block;background:var(--lvs-bg) !important;color:var(--lvs-txt) !important;padding:7px 10px;border-radius:var(--lvs-radius) !important;text-decoration:none !important;border:1px solid rgba(0,0,0,0.06) !important;box-shadow:0 0 0 1px rgba(255,255,255,0.15) inset !important;}
   .langa-vs-tree a:hover{background:var(--lvs-hbg) !important;color:var(--lvs-htxt) !important;}
   .langa-vs-xref{font-style:italic;opacity:.6;font-size:11px;}
-  '."\n".'');
+  '."\n  /* Custom CSS */\n".langa_tools_client_visual_sitemap_scope_css($custom_css)."\n".'');
 
   echo '<div class="langa-vs-wrap">';
   echo '<div class="langa-vs-grid">';

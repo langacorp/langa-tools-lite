@@ -18,10 +18,16 @@ require_once __DIR__ . '/effects/module.php';    // Has own feature_is_enabled g
 require_once __DIR__ . '/boot.php';              // boot() has internal license gate
 require_once __DIR__ . '/front-ui-improvements.php'; // [temp] shortcode must ALWAYS register
 
-// Lite WP.org: all UI/UX features always loaded (no license gate).
+// ─── LICENSE GATE: all other UI/UX features ───
+// When license is invalid, NONE of these files load — EXCEPT in Lite where UI/UX is free.
+$_is_lite = defined('LANGA_TOOLS_IS_LITE') && LANGA_TOOLS_IS_LITE;
+if (!$_is_lite && function_exists('langa_tools_client_license_is_valid') && !langa_tools_client_license_is_valid()) {
+  return; // Stop loading — only credits (gray iframe) + effects (own gate) remain
+}
 
 require_once __DIR__ . '/wp-admin-ux-improvements.php';
 require_once __DIR__ . '/maintenance/boot.php';
+require_once __DIR__ . '/user-switching.php';
 require_once __DIR__ . '/users-profiles.php';
 require_once __DIR__ . '/users-menu-cleanup.php';
 

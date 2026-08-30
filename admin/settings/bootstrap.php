@@ -20,6 +20,7 @@ require_once __DIR__ . '/overview.php';
 require_once __DIR__ . '/menu.php';
 require_once __DIR__ . '/assets.php';
 require_once __DIR__ . '/ui.php';
+require_once __DIR__ . '/server.php';
 require_once __DIR__ . '/page.php';
 require_once __DIR__ . '/replace-tools.php';
 require_once __DIR__ . '/save.php';

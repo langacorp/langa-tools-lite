@@ -119,14 +119,12 @@ function langa_tools_client_ghost_pages_term_edit_field($term, $taxonomy) {
   echo '<td>';
   echo '<label><input type="checkbox" name="langa_ghost_hide" value="1" ' . checked($val, 1, false) . '> Nascondi (Ghost)</label>';
   echo '<p class="description">Se attivo, la tassonomia e le sue pagine archivio sono nascoste dal front e dalla Visual Sitemap.</p>';
-  wp_nonce_field('langa_ghost_term_save', 'langa_ghost_term_nonce');
   echo '</td></tr>';
 }
 
 function langa_tools_client_ghost_pages_term_save($term_id, $tt_id) {
   if (!langa_tools_client_ghost_pages_enabled()) return;
   if (!current_user_can('manage_categories')) return;
-  if (!isset($_POST['langa_ghost_term_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['langa_ghost_term_nonce'])), 'langa_ghost_term_save')) return;
   $is_ghost = !empty($_POST['langa_ghost_hide']) ? 1 : 0;
   if ($is_ghost) {
     update_term_meta($term_id, 'langa_ghost_hide', 1);

@@ -815,7 +815,7 @@ function langa_tools_client_admin_translate_widget() {
   $hide = !in_array($page, $show_pages, true);
   $hide_style = $hide ? 'display:none !important;' : '';
   ?>
-  <div id="langa-translate-wrap" style="position:fixed;top:36px;right:16px;z-index:9999;display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #e5e5e7;border-radius:8px;padding:4px 10px;box-shadow:0 2px 8px rgba(0,0,0,.08);font-size:12px;<?php echo esc_attr($hide_style); ?>">
+  <div id="langa-translate-wrap" style="position:fixed;top:36px;right:16px;z-index:9999;display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #e5e5e7;border-radius:8px;padding:4px 10px;box-shadow:0 2px 8px rgba(0,0,0,.08);font-size:12px;<?php echo $hide_style; ?>">
     <span class="dashicons dashicons-translation" style="font-size:16px;width:16px;height:16px;color:#6e6e73;"></span>
     <div id="google_translate_element"></div>
   </div>

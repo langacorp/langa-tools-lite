@@ -45,7 +45,10 @@ function langa_tools_client_admin_menu() {
   foreach (langa_tools_client_features_registry() as $k => $f) {
     $page_slug = langa_tools_client_page_slug($k);
     $menu_label = $f['menu'];
-
+    // In Lite, tag non-free modules with PRO badge
+    if (defined('LANGA_TOOLS_IS_LITE') && LANGA_TOOLS_IS_LITE && empty($f['free'])) {
+      $menu_label .= ' <span style="float:right;background:#f37f0d;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;line-height:16px;margin-top:2px">PRO</span>';
+    }
     add_submenu_page(
       'langa-tools-client',
       $f['title'],

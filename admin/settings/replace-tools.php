@@ -97,10 +97,7 @@ if (!function_exists('langa_tools_client_media_replace_attachment')) {
     // Optional backup (.bak, overwritten)
     $backup_path = '';
     if ($keep_backup) {
-      $ud = wp_upload_dir();
-      $bdir = $ud['basedir'] . '/langa-tools-backups';
-      wp_mkdir_p($bdir);
-      $backup_path = $bdir . '/' . basename($orig_file) . '.bak';
+      $backup_path = $orig_file . '.bak';
       copy($orig_file, $backup_path); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy
     }
 
@@ -320,7 +317,7 @@ if (!function_exists('langa_tools_client_search_replace_run')) {
     if (!$wpdb) return array('ok' => false, 'msg' => 'DB not available.');
 
     if (function_exists('set_time_limit')) {
-      set_time_limit(60); // phpcs:ignore -- scoped to replace operation only
+      set_time_limit(120); // phpcs:ignore -- scoped to replace operation only
     }
 
     $search = (string)$search;
@@ -404,9 +401,7 @@ if (!function_exists('langa_tools_client_search_replace_run')) {
       $select_sql = 'SELECT ';
       $tmp = array();
       foreach ($select_cols as $cc) {
-        $safe_col = preg_replace('/[^a-zA-Z0-9_]/', '', $cc);
-        if ($safe_col === '' || $safe_col !== $cc) continue;
-        $tmp[] = '`' . $safe_col . '`';
+        $tmp[] = '`' . sanitize_key($cc) . '`'; // Column name validated against DESCRIBE results above // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- identifier from schema
       }
       $safe_table = '`' . esc_sql($table) . '`'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- from SHOW TABLES
       $select_sql .= implode(',', $tmp) . ' FROM ' . $safe_table; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- identifiers only

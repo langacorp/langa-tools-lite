@@ -218,7 +218,7 @@ html.langa-preloader-lock, html.langa-preloader-lock body{overflow:hidden!import
     wp_register_script('langa-preloader-footer', false, array(), '1.0', true);
     wp_enqueue_script('langa-preloader-footer');
     // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JS from safe integer constants
-    wp_add_inline_script('langa-preloader-footer', $js);
+    wp_add_inline_script('langa-preloader-footer', $js); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JS built from hardcoded values and esc_js'd options
   }, 99);
 }
 

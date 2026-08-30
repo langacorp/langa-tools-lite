@@ -316,11 +316,18 @@ function langa_tools_client_maintenance_print_head_assets(){
   $a = langa_tools_client_maintenance_collect_assets();
   if (!empty($a['head'])) {
     foreach (array_unique($a['head']) as $u) {
-      $h='langa-maint-css-'.md5($u);
-      wp_register_style($h, esc_url($u), array(), null, 'all');
-      wp_enqueue_style($h);
-      wp_print_styles(array($h));
+      // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- standalone maintenance page
+      echo '<link rel="stylesheet" href="'.esc_url($u).'" media="all" />' . "
+";
     }
+  }
+  if (!empty($a['inline_css'])) {
+    echo "
+<?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- standalone maintenance page ?>
+<style id='langa-tools-custom-effect-css'>
+" . $a['inline_css'] . "
+</style>
+";
   }
 }
 
@@ -328,11 +335,17 @@ function langa_tools_client_maintenance_print_footer_assets(){
   $a = langa_tools_client_maintenance_collect_assets();
   if (!empty($a['foot'])) {
     foreach (array_unique($a['foot']) as $u) {
-      $h='langa-maint-js-'.md5($u);
-      wp_register_script($h, esc_url($u), array(), null, array('strategy'=>'defer','in_footer'=>true));
-      wp_enqueue_script($h);
-      wp_print_scripts(array($h));
+      // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- maintenance page (no wp_head)
+      echo '<script src="'.esc_url($u).'" defer></script>' . "\n"; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone maintenance page
     }
+  }
+  if (!empty($a['inline_js'])) {
+    echo "
+<?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone maintenance page ?>
+<script id='langa-tools-custom-effect-js'>(function(){
+" . $a['inline_js'] . "
+})();</script>
+";
   }
 }
 
@@ -355,7 +368,7 @@ function langa_tools_client_render_maintenance_page() {
   if (empty($ms['form_bg'])) $ms['form_bg'] = '#ffffff';
   if (empty($ms['text_color'])) $ms['text_color'] = '#1c1917';
   if (!isset($ms['radius'])) $ms['radius'] = 5;
-  // custom_css removed from Lite WP.org build
+  if (!isset($ms['custom_css'])) $ms['custom_css'] = '';
 
   // Theme logo (height 70px); fallback text
   $logo_url = '';
@@ -395,7 +408,8 @@ function langa_tools_client_render_maintenance_page() {
 <link rel="icon" href="<?php echo esc_url($fav); ?>" />
 <link rel="shortcut icon" href="<?php echo esc_url($fav); ?>" />
 <link rel="apple-touch-icon" href="<?php echo esc_url($fav); ?>" />
-  <?php ob_start(); echo '<'.$_s.'>'; ?>
+  <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- standalone maintenance page ?>
+  <style>
     :root{
       --lm-accent: <?php echo esc_html($ms['primary_color']); ?>;
       --lm-header-bg: <?php echo esc_html($ms['header_bg']); ?>;
@@ -458,9 +472,17 @@ function langa_tools_client_render_maintenance_page() {
     .foot{margin:14px 0 0 !important;font-size:12px !important;color:var(--lm-text) !important;opacity:.55 !important;text-align:center !important;padding:0 !important;border:0 !important;background:transparent !important;}
     a{color:var(--lm-accent) !important;text-decoration:underline !important;}
     @media (max-width: 768px){ input,textarea,select{ font-size:16px !important; } .row{grid-template-columns:1fr !important;} body{padding:16px !important;} .panel{margin-top:10px !important;} h1{font-size:24px !important;margin:4px 0 0 !important;} .msg{margin-top:6px !important;} .logo{height:40px !important;} .brand-text{height:50px !important;font-size:18px !important;} form{margin-top:12px !important;padding:12px !important;} }
-  <?php echo '</'.$_s.'>'; ?>
+  </style>
 
 <?php
+  // Custom CSS (Maintenance only)
+  $custom_css = is_string($ms['custom_css']) ? trim($ms['custom_css']) : '';
+  if ($custom_css !== '') {
+    $custom_css = str_replace(array('</style>', '</STYLE>'), '', $custom_css);
+    if (strlen($custom_css) > 12000) $custom_css = substr($custom_css, 0, 12000);
+    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- CSS sanitized, standalone maintenance page
+    echo "\n<style id=\"langa-tools-maintenance-custom-css\">\n" . $custom_css . "\n</style>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped,WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- standalone maintenance page, CSS sanitized on save
+  }
 ?>
 </head>
 <body>
@@ -531,13 +553,17 @@ function langa_tools_client_render_maintenance_page() {
 
       <div class="foot">
         <?php echo $site_name; ?> © <?php echo esc_html($year); ?><br>
-        <!-- Attribution removed for WP.org compliance -->
-        
+        Ci siamo affidati a <a href="https://langa.tv/">LANGA</a><br>
+        Non sai chi è? Scopri di più su <a href="https://about.langa.tv/">About LANGA</a><br><br>
+        <span style="opacity:0.5;">Maintenance powered by LANGA Tools</span><br><br>
       </div>
     </div>
   </div>
 <?php langa_tools_client_maintenance_print_footer_assets(); ?>
-<?php wp_print_inline_script_tag("if(window.innerWidth<=768){var f=document.getElementById('langa-maint-form');if(f)setTimeout(function(){f.scrollIntoView({behavior:'smooth',block:'start'})},400);}"); ?>
+<?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone page ?>
+<script>
+if(window.innerWidth<=768){var f=document.getElementById('langa-maint-form');if(f)setTimeout(function(){f.scrollIntoView({behavior:'smooth',block:'start'})},400);}
+</script>
 <?php
   // Credits on maintenance: inject iframe + CSS + blob loader (same as wp_footer)
   if (function_exists('langa_credits_enabled') && langa_credits_enabled() && function_exists('langa_credits_mode')) {
@@ -547,24 +573,19 @@ function langa_tools_client_render_maintenance_page() {
       $chex = ltrim($ccolor, '#');
       if (strlen($chex) === 3) $chex = $chex[0].$chex[0].$chex[1].$chex[1].$chex[2].$chex[2];
       $cr = hexdec(substr($chex, 0, 2)); $cg = hexdec(substr($chex, 2, 2)); $cb = hexdec(substr($chex, 4, 2));
-      
-      ob_start();
-      echo '<'.$_s.'>
+      $gray_filter = ($cmode === 'iframe') ? 'filter:grayscale(100%)!important;-webkit-filter:grayscale(100%)!important;' : '';
+      // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStyle -- inline CSS
+      echo '<style>
       /* Credits button — must override maintenance page aggressive button resets */
       html body button#langa-button{position:fixed!important;right:7px!important;bottom:0!important;left:auto!important;top:auto!important;display:block!important;float:none!important;color:'.esc_attr($ccolor).'!important;font:400 14px/25px "Open Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif!important;letter-spacing:-.2px!important;text-transform:capitalize!important;height:27px!important;width:auto!important;cursor:pointer!important;background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important;margin:0!important;outline:none!important;z-index:2147483647!important;text-align:right!important;min-height:0!important;min-width:0!important;max-width:none!important;text-decoration:none!important;-webkit-appearance:none!important;appearance:none!important;border-radius:0!important;text-shadow:none!important;background-image:none!important;transform:none!important;overflow:visible!important;opacity:1!important;line-height:25px!important;}
       html body button#langa-button:hover,html body button#langa-button:focus,html body button#langa-button:active{outline:none!important;box-shadow:none!important;background:transparent!important;color:'.esc_attr($ccolor).'!important;border:none!important;text-decoration:none!important;opacity:1!important;}
       html body button#langa-button::before{display:none!important;content:none!important;}
       html body button#langa-button::after{content:""!important;position:absolute!important;right:-7px!important;bottom:0!important;top:auto!important;left:auto!important;width:200px!important;height:140px!important;pointer-events:none!important;z-index:-1!important;background:radial-gradient(ellipse at 100% 100%,rgba('.esc_attr($cr).','.esc_attr($cg).','.esc_attr($cb).',0.14) 0%,transparent 70%)!important;display:block!important;border:none!important;padding:0!important;margin:0!important;opacity:1!important;border-radius:0!important;}
       html body div#langa-bottom-border{position:fixed!important;bottom:0!important;left:0!important;height:1px!important;width:100%!important;background:'.esc_attr($ccolor).'!important;display:block!important;border:none!important;padding:0!important;margin:0!important;z-index:2147483646!important;}
-      html body iframe#langa-credits-iframe{display:none!important;position:fixed!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:2147483640!important;border:none!important;}
+      html body iframe#langa-credits-iframe{display:none!important;position:fixed!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:2147483640!important;border:none!important;'.$gray_filter.'}
       html body iframe#langa-credits-iframe.is-open{display:block!important;}
       @media(max-width:680px){html body button#langa-button::after{width:150px!important;height:100px!important;}}
-      </'.$_s.'>';
-      $_mcc=ob_get_clean();
-      $_mcc=preg_replace('#</?style[^>]*>#i','',$_mcc);
-      wp_register_style('langa-maint-credits',false);
-      wp_add_inline_style('langa-maint-credits',wp_strip_all_tags($_mcc));
-      wp_print_styles(array('langa-maint-credits'));
+      </style>';
       if (function_exists('langa_credits_build_srcdoc')) {
         $mlogo = esc_url(function_exists('langa_credits_logo_url') ? langa_credits_logo_url() : '');
         $mnonce = wp_create_nonce('langa_credits_submit');
@@ -575,14 +596,14 @@ function langa_tools_client_render_maintenance_page() {
         $mdevweb = function_exists('langa_credits_developer_website') ? langa_credits_developer_website() : '';
         $mhtml = langa_credits_build_srcdoc($ccolor, $cr, $cg, $cb, $mlogo, $mnonce, $majax, $mslogan, $mservices, $mfooter, $mdevweb);
         echo '<iframe id="langa-credits-iframe" title="Credits" allow="" allowtransparency="true" tabindex="-1"></iframe>';
-        echo '<'.$_sc.' type="text/template" id="langa-credits-b64">' . base64_encode($mhtml) . '</'.$_sc.'>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped,WordPress.WP.EnqueuedResources.NonEnqueuedScript -- base64 encoded HTML template for iframe blob
+        echo '<script type="text/template" id="langa-credits-b64">' . base64_encode($mhtml) . '</script>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped,WordPress.WP.EnqueuedResources.NonEnqueuedScript -- base64 encoded HTML template for iframe blob
         // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone maintenance page, blob injection
-        wp_print_inline_script_tag('(function(){var t=document.getElementById("langa-credits-b64");if(!t)return;var h=atob(t.textContent);t.parentNode.removeChild(t);var b=new Blob([h],{type:"text/html"});window._lcBlobUrl=URL.createObjectURL(b);})();');
+        echo '<script>(function(){var t=document.getElementById("langa-credits-b64");if(!t)return;var h=atob(t.textContent);t.parentNode.removeChild(t);var b=new Blob([h],{type:"text/html"});window._lcBlobUrl=URL.createObjectURL(b);})();</script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone maintenance page
         // Inline credits JS (button + click) since wp_enqueue_scripts doesn't run on maintenance
         $credits_js_path = LANGA_TOOLS_CLIENT_PATH . 'assets/langa-credits.js';
         if (is_readable($credits_js_path)) {
           // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- standalone maintenance page
-          wp_print_inline_script_tag(file_get_contents($credits_js_path));
+          echo '<script>' . file_get_contents($credits_js_path) . '</script>'; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript,WordPress.Security.EscapeOutput.OutputNotEscaped -- standalone maintenance page, no WP enqueue available
         }
       }
     }

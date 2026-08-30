@@ -40,7 +40,7 @@ function langa_tools_client_tour_mod_enabled($key) {
 function langa_tools_client_tour_build_steps() {
   $is_lite = langa_tools_client_tour_is_lite();
 
-  $license_ok = true; // Lite WP.org: all features free.
+  $license_ok    = function_exists('langa_tools_client_license_is_valid') && langa_tools_client_license_is_valid();
   $dev_bypass    = function_exists('langa_tools_client_dev_bypass_active') && langa_tools_client_dev_bypass_active();
   $eff_license   = $license_ok || $dev_bypass;
   $data_complete = function_exists('langa_tools_client_data_complete') && langa_tools_client_data_complete();
@@ -83,9 +83,28 @@ function langa_tools_client_tour_build_steps() {
       'desc'=>'<strong>Custom Login</strong> replaces the boring WP login with your logo and colors. <strong>Credits</strong> adds a professional "built by" footer. <strong>Maintenance</strong> shows a branded page while you work. All free, all automatic.',
       'target'=>'.langa-module-enable','fallback'=>'.wrap','page'=>'langa-tools-client-ui-ux','tab'=>'','done'=>langa_tools_client_tour_mod_enabled('adminux'),'position'=>'bottom');
 
+    $steps[] = array('id'=>'mod-forms','mode'=>'complete','title'=>'Forms — Contact in 30 seconds',
+      'desc'=>'Professional contact forms with per-form recipients, confirmations, multilingual labels and spam protection. Copy the shortcode, paste it anywhere. Branded with your color automatically.',
+      'target'=>$mod_target,'fallback'=>$mod_fallback,'page'=>'langa-tools-client-forms','tab'=>'','done'=>false,'position'=>'bottom','pro_hint'=>true);
+
+    $steps[] = array('id'=>'mod-legal','mode'=>'complete','title'=>'Legal — GDPR in 2 minutes',
+      'desc'=>'OPT-IN cookie consent banner, auto-generated Privacy, Cookie and Terms pages. Templates auto-fill with your company data. Compliant out of the box — no legal expertise needed.',
+      'target'=>$mod_target,'fallback'=>$mod_fallback,'page'=>'langa-tools-client-legal','tab'=>'','done'=>false,'position'=>'bottom','pro_hint'=>true);
+
+    $steps[] = array('id'=>'mod-safer','mode'=>'complete','title'=>'Safer — Harden WordPress',
+      'desc'=>'<strong>Ghost Mode</strong> hides all WordPress fingerprints. <strong>Door Access</strong> moves your login URL. <strong>IP allowlist</strong> blocks unauthorized access. No .htaccess editing, all reversible.',
+      'target'=>$mod_target,'fallback'=>$mod_fallback,'page'=>'langa-tools-client-safer','tab'=>'','done'=>false,'position'=>'bottom','pro_hint'=>true);
+
+    // Final CTA
+    $steps[] = array('id'=>'upgrade','mode'=>'both','title'=>'Ready to unlock everything?',
+      'desc'=>'With <strong>LANGA Tools PRO</strong> you get all 10+ modules, remote management from your LANGA Server, priority support, and auto-updates.<br><br><a href="'.esc_url($pricing_url).'" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 24px;background:#f37f0d;color:#fff;font-weight:700;font-size:13px;border-radius:8px;text-decoration:none"><span class="dashicons dashicons-unlock" style="font-size:16px;width:16px;height:16px"></span> View PRO plans</a>',
+      'target'=>'#langa-overview-modules','fallback'=>'.wrap','page'=>'langa-tools-client','tab'=>'','done'=>false,'position'=>'top','pro_hint'=>true);
+
   } else {
     // ═══ PRO ═══
-    // License tour step removed from Lite WP.org build.
+    $steps[] = array('id'=>'license','mode'=>'both','title'=>'Connect your license',
+      'desc'=>'Enter the <strong>Site Key</strong> and <strong>Secret</strong> you received from your LANGA Server. This links the site to your account and unlocks all licensed modules.',
+      'target'=>'#site_key','fallback'=>'.form-table','page'=>'langa-tools-client-settings','tab'=>'general','done'=>$eff_license,'position'=>'bottom');
 
     $steps[] = array('id'=>'data','mode'=>'both','title'=>'Company information',
       'desc'=>'Your client\'s company name, VAT, address and contacts are <strong>required to activate PRO modules</strong>. This data also auto-fills Legal pages, Business Card, Credits footer and email templates.',
@@ -151,8 +170,7 @@ function langa_tools_client_tour_enqueue() {
     'steps'=>$ctx['steps'],'nonce'=>wp_create_nonce('langa_tour_nonce'),
     'ajaxurl'=>admin_url('admin-ajax.php'),'autoLaunch'=>$force||$auto,
     'adminUrl'=>admin_url('admin.php'),'isLite'=>$ctx['is_lite'],
-  )) . ';');
-  wp_add_inline_script('langa-tour-guide', langa_tools_client_tour_js());
+  )) . ';' . langa_tools_client_tour_js());
 }
 add_action('admin_enqueue_scripts', 'langa_tools_client_tour_enqueue', 99);
 
@@ -171,7 +189,8 @@ function langa_tools_client_tour_render_help_section() {
   if ($dismissed) {
     // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin tour reset button handler
     echo '<button type="button" class="button" style="color:#fff;border-color:rgba(255,255,255,.3);background:transparent" id="langa-tour-reset-btn">Reset</button>';
-    wp_print_inline_script_tag('(function(){var b=document.getElementById("langa-tour-reset-btn");if(b)b.addEventListener("click",function(){var fd=new FormData();fd.append("action","langa_tour_reset");fd.append("_nonce","' . esc_js($nonce) . '");fetch("' . esc_js(admin_url('admin-ajax.php')) . '",{method:"POST",body:fd,credentials:"same-origin"}).then(function(){b.textContent="Done!";b.disabled=true;setTimeout(function(){b.textContent="Reset";b.disabled=false},1500)})})})();');
+    // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin tour reset button handler
+    echo '<script>(function(){var b=document.getElementById("langa-tour-reset-btn");if(b)b.addEventListener("click",function(){var fd=new FormData();fd.append("action","langa_tour_reset");fd.append("_nonce","' . esc_js($nonce) . '");fetch("' . esc_js(admin_url('admin-ajax.php')) . '",{method:"POST",body:fd,credentials:"same-origin"}).then(function(){b.textContent="Done!";b.disabled=true;setTimeout(function(){b.textContent="Reset";b.disabled=false},1500)})})})();</script>';
   }
   echo '</div></div>';
 }

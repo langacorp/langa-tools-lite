@@ -31,7 +31,7 @@ function langa_tools_client_render_module_uiux($module, $enabled, $locked, $f) {
     if (empty($ms['form_bg'])) $ms['form_bg'] = '#ffffff';
     if (empty($ms['text_color'])) $ms['text_color'] = '#1c1917';
     if (!isset($ms['radius'])) $ms['radius'] = 5;
-    // custom_css removed from Lite WP.org
+    if (!isset($ms['custom_css'])) $ms['custom_css'] = '';
 
     // Sub-tabs (same style used by other modules)
     $subtab = isset($_GET['tab']) ? sanitize_key((string)$_GET['tab']) : 'general';
@@ -67,7 +67,7 @@ function langa_tools_client_render_module_uiux($module, $enabled, $locked, $f) {
     $vs_htxt = !empty($vs['hover_text_color']) ? $vs['hover_text_color'] : '#111827';
     $vs_line = !empty($vs['line_color']) ? $vs['line_color'] : '#d6d3d1';
     $vs_radius = isset($vs['radius']) ? max(0, min(40, (int)$vs['radius'])) : 5;
-    $vs_css = '';
+    $vs_css  = isset($vs['custom_css']) ? (string)$vs['custom_css'] : '';
     $vs_sort_by = !empty($vs['sort_by']) ? sanitize_key($vs['sort_by']) : 'menu_order';
     $vs_sort_order = !empty($vs['sort_order']) ? sanitize_key($vs['sort_order']) : 'asc';
     // NOTE: posts/products are always shown when sections exist (no toggles).
@@ -256,41 +256,41 @@ function langa_tools_client_render_module_uiux($module, $enabled, $locked, $f) {
 
       // Runtime verify AJAX
       // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin inline JS for immediate DOM manipulation
-      $_ijs='';
-      $_ijs.='(function(){';
-      $_ijs.='var nonce = "' . esc_js(wp_create_nonce('langa_sc_runtime_test')) . '";';
-      $_ijs.='var ajaxurl = "' . esc_url(admin_url('admin-ajax.php')) . '";';
-      $_ijs.='function testOne(btn){';
-      $_ijs.='var tag=btn.getAttribute("data-tag");';
-      $_ijs.='var wrap=btn.closest(".langa-sc-rt-result");';
-      $_ijs.='wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-skip\\">…</span>";';
-      $_ijs.='var fd=new FormData();';
-      $_ijs.='fd.append("action","langa_sc_runtime_test");';
-      $_ijs.='fd.append("_wpnonce",nonce);';
-      $_ijs.='fd.append("tag",tag);';
-      $_ijs.='fetch(ajaxurl,{method:"POST",body:fd})';
-      $_ijs.='.then(function(r){return r.json()})';
-      $_ijs.='.then(function(d){';
-      $_ijs.='if(d.success&&d.data.ok){';
-      $_ijs.='var out=d.data.output_len>0?" ("+d.data.output_len+" chr)":"";';
-      $_ijs.='wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-ok\\" title=\\"" + (d.data.output_preview||"") + "\\">&#10003; OK"+out+"</span>";';
-      $_ijs.='}else{';
-      $_ijs.='var err=(d.data&&d.data.error)?d.data.error:"Errore";';
-      $_ijs.='wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-fail\\" title=\\""+err+"\\">&#10007; FAIL</span>";';
-      $_ijs.='}})';
-      $_ijs.='.catch(function(){wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-fail\\">&#10007; Network error</span>";});';
-      $_ijs.='}';
-      $_ijs.='document.addEventListener("click",function(e){if(e.target.classList.contains("langa-sc-verify")){e.preventDefault();testOne(e.target);}});';
-      $_ijs.='var allBtn=document.getElementById("langa-sc-verify-all");';
-      $_ijs.='if(allBtn){allBtn.addEventListener("click",function(){';
-      $_ijs.='var btns=document.querySelectorAll(".langa-sc-verify");';
-      $_ijs.='var st=document.getElementById("langa-sc-verify-status");';
-      $_ijs.='var total=btns.length,done=0;';
-      $_ijs.='st.textContent="Verifico 0/"+total+"…";';
-      $_ijs.='btns.forEach(function(b,i){setTimeout(function(){testOne(b);done++;st.textContent="Verifico "+done+"/"+total+(done>=total?" ✓":"…");},i*200);});';
-      $_ijs.='});}';
-      $_ijs.='})();';
-      wp_print_inline_script_tag($_ijs);
+      echo '<script>';
+      echo '(function(){';
+      echo 'var nonce = "' . esc_js(wp_create_nonce('langa_sc_runtime_test')) . '";';
+      echo 'var ajaxurl = "' . esc_url(admin_url('admin-ajax.php')) . '";';
+      echo 'function testOne(btn){';
+      echo 'var tag=btn.getAttribute("data-tag");';
+      echo 'var wrap=btn.closest(".langa-sc-rt-result");';
+      echo 'wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-skip\\">…</span>";';
+      echo 'var fd=new FormData();';
+      echo 'fd.append("action","langa_sc_runtime_test");';
+      echo 'fd.append("_wpnonce",nonce);';
+      echo 'fd.append("tag",tag);';
+      echo 'fetch(ajaxurl,{method:"POST",body:fd})';
+      echo '.then(function(r){return r.json()})';
+      echo '.then(function(d){';
+      echo 'if(d.success&&d.data.ok){';
+      echo 'var out=d.data.output_len>0?" ("+d.data.output_len+" chr)":"";';
+      echo 'wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-ok\\" title=\\"" + (d.data.output_preview||"") + "\\">&#10003; OK"+out+"</span>";';
+      echo '}else{';
+      echo 'var err=(d.data&&d.data.error)?d.data.error:"Errore";';
+      echo 'wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-fail\\" title=\\""+err+"\\">&#10007; FAIL</span>";';
+      echo '}})';
+      echo '.catch(function(){wrap.innerHTML="<span class=\\"langa-sc-badge langa-sc-rt-fail\\">&#10007; Network error</span>";});';
+      echo '}';
+      echo 'document.addEventListener("click",function(e){if(e.target.classList.contains("langa-sc-verify")){e.preventDefault();testOne(e.target);}});';
+      echo 'var allBtn=document.getElementById("langa-sc-verify-all");';
+      echo 'if(allBtn){allBtn.addEventListener("click",function(){';
+      echo 'var btns=document.querySelectorAll(".langa-sc-verify");';
+      echo 'var st=document.getElementById("langa-sc-verify-status");';
+      echo 'var total=btns.length,done=0;';
+      echo 'st.textContent="Verifico 0/"+total+"…";';
+      echo 'btns.forEach(function(b,i){setTimeout(function(){testOne(b);done++;st.textContent="Verifico "+done+"/"+total+(done>=total?" ✓":"…");},i*200);});';
+      echo '});}';
+      echo '})();';
+      echo '</script>';
 
       echo '</td></tr>';
 
@@ -818,9 +818,9 @@ langtoli_inline_script('
       echo '<p class="description" style="margin-top:10px;">Tip: cambia l’evento nel menu a tendina per auto-compilare valori suggeriti.</p>';
 
       // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin inline JS for immediate DOM manipulation
-      $_ijs='';
-      $_ijs.='document.addEventListener("change",function(e){if(e.target&&e.target.classList.contains("effect-select")){var row=e.target.closest(".effect-row");var effect=e.target.value;var defaults='.wp_json_encode($js_defaults).';if(effect&&defaults[effect]){var d=defaults[effect];row.querySelector(".inp-start").value=d.s;row.querySelector(".inp-end").value=d.e;row.querySelector(".inp-before").value=d.b;row.querySelector(".inp-after").value=d.a;}else if(!effect){row.querySelector(".inp-start").value="";row.querySelector(".inp-end").value="";row.querySelector(".inp-before").value="";row.querySelector(".inp-after").value="";}}});';
-      wp_print_inline_script_tag($_ijs);
+      echo '<script>';
+      echo 'document.addEventListener("change",function(e){if(e.target&&e.target.classList.contains("effect-select")){var row=e.target.closest(".effect-row");var effect=e.target.value;var defaults='.wp_json_encode($js_defaults).';if(effect&&defaults[effect]){var d=defaults[effect];row.querySelector(".inp-start").value=d.s;row.querySelector(".inp-end").value=d.e;row.querySelector(".inp-before").value=d.b;row.querySelector(".inp-after").value=d.a;}else if(!effect){row.querySelector(".inp-start").value="";row.querySelector(".inp-end").value="";row.querySelector(".inp-before").value="";row.querySelector(".inp-after").value="";}}});';
+      echo '</script>';
 
       // Custom effect (CSS/JS)
       $c = isset($opt['custom']) && is_array($opt['custom']) ? $opt['custom'] : array();
@@ -828,6 +828,32 @@ langtoli_inline_script('
       $c_end   = isset($c['end_md']) ? (string)$c['end_md'] : '';
       $c_css   = isset($c['css']) ? (string)$c['css'] : '';
       $c_js    = isset($c['js']) ? (string)$c['js'] : '';
+
+      echo '<hr style="margin:18px 0;" />';
+      echo '<h3 style="margin:0 0 8px;">Custom effect</h3>';
+      echo '<p class="description" style="margin:0 0 10px;">Custom effect (inline). If Start/End are empty, not applied. CSS goes in <code>&lt;style&gt;</code>, JS in <code>&lt;script&gt;</code> (footer).</p>';
+
+      echo '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">';
+        echo '<div>';
+          echo '<label style="display:block;font-weight:600;margin-bottom:4px;">Start (GG/MM)</label>';
+          echo '<input type="text" name="effects_custom[start_md]" value="'.esc_attr($c_start).'" placeholder="GG/MM" style="width:110px" />';
+        echo '</div>';
+        echo '<div>';
+          echo '<label style="display:block;font-weight:600;margin-bottom:4px;">End (GG/MM)</label>';
+          echo '<input type="text" name="effects_custom[end_md]" value="'.esc_attr($c_end).'" placeholder="GG/MM" style="width:110px" />';
+        echo '</div>';
+      echo '</div>';
+
+      echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:965px;margin-top:12px;">';
+        echo '<div>';
+          echo '<label style="display:block;font-weight:600;margin-bottom:6px;">CSS</label>';
+          echo '<textarea name="effects_custom[css]" rows="10" style="width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,\"Liberation Mono\",\"Courier New\",monospace;">'.esc_textarea($c_css).'</textarea>';
+        echo '</div>';
+        echo '<div>';
+          echo '<label style="display:block;font-weight:600;margin-bottom:6px;">JS</label>';
+          echo '<textarea name="effects_custom[js]" rows="10" style="width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,\"Liberation Mono\",\"Courier New\",monospace;">'.esc_textarea($c_js).'</textarea>';
+        echo '</div>';
+      echo '</div>';
 
       echo '</td></tr>';
     }
@@ -1125,22 +1151,22 @@ langtoli_inline_script('
       echo '</div>';
 
       // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin page callback, timing prevents wp_add_inline_script
-      $_ijs='';
-      $_ijs.='(function($){';
-      $_ijs.='var idx = ' . absint(max(count($promo_rules), 0)) . ';';
-      $_ijs.='$("#langa-promo-add-rule").on("click",function(){';
-      $_ijs.='var html="<tr data-idx=\""+idx+"\">"';
-      $_ijs.='+"<td style=\"text-align:center\"><input type=\"checkbox\" name=\"adminux[promo_isolation_rules]["+idx+"][active]\" value=\"1\" checked /></td>"';
-      $_ijs.='+"<td><select name=\"adminux[promo_isolation_rules]["+idx+"][type]\" style=\"width:100%\"><option value=\"class\">CSS class</option><option value=\"id\">Element ID</option><option value=\"data-nonce\">data-nonce attr</option></select></td>"';
-      $_ijs.='+"<td><input type=\"text\" name=\"adminux[promo_isolation_rules]["+idx+"][selector]\" style=\"width:100%\" placeholder=\".my-plugin-banner\" /></td>"';
-      $_ijs.='+"<td><input type=\"text\" name=\"adminux[promo_isolation_rules]["+idx+"][label]\" style=\"width:100%\" placeholder=\"Plugin XYZ promo\" /></td>"';
-      $_ijs.='+"<td style=\"text-align:center\"><button type=\"button\" class=\"button button-link-delete langa-promo-remove-rule\">&times;</button></td>"';
-      $_ijs.='+"</tr>";';
-      $_ijs.='$("#langa-promo-iso-rows").append(html);idx++;';
-      $_ijs.='});';
-      $_ijs.='$(document).on("click",".langa-promo-remove-rule",function(){$(this).closest("tr").remove()});';
-      $_ijs.='})(jQuery);';
-      wp_print_inline_script_tag($_ijs);
+      echo '<script>';
+      echo '(function($){';
+      echo 'var idx = ' . absint(max(count($promo_rules), 0)) . ';';
+      echo '$("#langa-promo-add-rule").on("click",function(){';
+      echo 'var html="<tr data-idx=\""+idx+"\">"';
+      echo '+"<td style=\"text-align:center\"><input type=\"checkbox\" name=\"adminux[promo_isolation_rules]["+idx+"][active]\" value=\"1\" checked /></td>"';
+      echo '+"<td><select name=\"adminux[promo_isolation_rules]["+idx+"][type]\" style=\"width:100%\"><option value=\"class\">CSS class</option><option value=\"id\">Element ID</option><option value=\"data-nonce\">data-nonce attr</option></select></td>"';
+      echo '+"<td><input type=\"text\" name=\"adminux[promo_isolation_rules]["+idx+"][selector]\" style=\"width:100%\" placeholder=\".my-plugin-banner\" /></td>"';
+      echo '+"<td><input type=\"text\" name=\"adminux[promo_isolation_rules]["+idx+"][label]\" style=\"width:100%\" placeholder=\"Plugin XYZ promo\" /></td>"';
+      echo '+"<td style=\"text-align:center\"><button type=\"button\" class=\"button button-link-delete langa-promo-remove-rule\">&times;</button></td>"';
+      echo '+"</tr>";';
+      echo '$("#langa-promo-iso-rows").append(html);idx++;';
+      echo '});';
+      echo '$(document).on("click",".langa-promo-remove-rule",function(){$(this).closest("tr").remove()});';
+      echo '})(jQuery);';
+      echo '</script>';
 
       echo '</div>';
 

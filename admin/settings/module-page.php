@@ -15,12 +15,241 @@ function _langa_tools_client_module_page_inner($module) {
   }
   $f = $features[$module];
 
-  // Lite: only free modules available
-  if (empty($f['free'])) {
-    echo '<div class="wrap"><h1>' . esc_html($f['title']) . '</h1>';
-    echo '<p>This module is available in <a href="https://tools.langa.tv" target="_blank">LANGA Tools PRO</a>.</p></div>';
+  // LITE: PRO modules show upsell page
+// LITE: PRO modules → rich teaser with blurred panels + feature cards
+  if (defined('LANGA_TOOLS_IS_LITE') && LANGA_TOOLS_IS_LITE && !empty($f['pro'])) {
+    $teasers = array(
+      'safer' => array(
+        'tabs'  => array('Hardening', 'Ghost Mode', 'Firewall', 'Headers'),
+        'features' => array(
+          array('icon'=>'dashicons-shield-alt','title'=>'One-click hardening','desc'=>'Disable XML-RPC, file editing, REST user enumeration, and 15+ attack vectors.'),
+          array('icon'=>'dashicons-hidden','title'=>'Ghost Mode','desc'=>'Remove WordPress fingerprints from HTML source. Version strings, generator tags, emoji scripts.'),
+          array('icon'=>'dashicons-lock','title'=>'Login protection','desc'=>'Limit login attempts, custom login URL, and brute-force protection.'),
+          array('icon'=>'dashicons-admin-site','title'=>'Security headers','desc'=>'CSP, X-Frame-Options, HSTS — one toggle per header, previewed before activation.'),
+        ),
+        'stats' => '15+ hardening rules · 8 security headers · Login rate limiting',
+        'fake_fields' => array(
+          array('label'=>'Enable Hardening','type'=>'toggle','checked'=>true),
+          array('label'=>'Disable XML-RPC','type'=>'toggle','checked'=>true),
+          array('label'=>'Disable File Editor','type'=>'toggle','checked'=>true),
+          array('label'=>'Hide WP Version','type'=>'toggle','checked'=>false),
+          array('label'=>'Custom Login URL','type'=>'text','value'=>'/my-login'),
+          array('label'=>'Login Attempt Limit','type'=>'select','value'=>'5 attempts'),
+        ),
+      ),
+      'seo' => array(
+        'tabs'  => array('General', 'Sitemap', 'Schema', 'Meta Tags'),
+        'features' => array(
+          array('icon'=>'dashicons-search','title'=>'XML Sitemap','desc'=>'Auto-generated sitemap with post types, taxonomies, and custom priorities.'),
+          array('icon'=>'dashicons-editor-code','title'=>'Schema markup','desc'=>'Organization, LocalBusiness, BreadcrumbList — structured data for Google.'),
+          array('icon'=>'dashicons-admin-page','title'=>'Meta & OG tags','desc'=>'Title templates, meta descriptions, Open Graph and Twitter Cards.'),
+          array('icon'=>'dashicons-performance','title'=>'Lightweight','desc'=>'Core SEO features without 100+ settings pages. No bloat.'),
+        ),
+        'stats' => 'Auto sitemap · Schema.org · OG tags · No bloat',
+        'fake_fields' => array(
+          array('label'=>'Enable SEO Module','type'=>'toggle','checked'=>true),
+          array('label'=>'XML Sitemap','type'=>'toggle','checked'=>true),
+          array('label'=>'Title Template','type'=>'text','value'=>'%title% — %sitename%'),
+          array('label'=>'Schema Type','type'=>'select','value'=>'LocalBusiness'),
+          array('label'=>'Open Graph','type'=>'toggle','checked'=>true),
+          array('label'=>'Twitter Cards','type'=>'toggle','checked'=>false),
+        ),
+      ),
+      'cache' => array(
+        'tabs'  => array('Browser', 'Purge', 'Presets', 'Performance'),
+        'features' => array(
+          array('icon'=>'dashicons-performance','title'=>'Browser caching','desc'=>'Cache-Control and Expires headers for static assets. Configurable TTL.'),
+          array('icon'=>'dashicons-update','title'=>'Smart purge','desc'=>'Purge individual URLs, post types, or everything.'),
+          array('icon'=>'dashicons-admin-settings','title'=>'Preset packs','desc'=>'One-click performance profiles: Starter, Agency, E-commerce.'),
+          array('icon'=>'dashicons-dashboard','title'=>'Query cleanup','desc'=>'Remove ?ver= strings, disable emojis, defer scripts.'),
+        ),
+        'stats' => 'Browser headers · Query cleanup · Cache presets · Defer scripts',
+        'fake_fields' => array(
+          array('label'=>'Enable Cache Module','type'=>'toggle','checked'=>true),
+          array('label'=>'Browser TTL (hours)','type'=>'text','value'=>'720'),
+          array('label'=>'Active Preset','type'=>'select','value'=>'Agency Standard'),
+          array('label'=>'Remove Query Strings','type'=>'toggle','checked'=>true),
+          array('label'=>'Disable Emojis','type'=>'toggle','checked'=>true),
+          array('label'=>'Defer Scripts','type'=>'toggle','checked'=>false),
+        ),
+      ),
+      'legal' => array(
+        'tabs'  => array('Privacy', 'Cookies', 'Terms', 'Banner'),
+        'features' => array(
+          array('icon'=>'dashicons-shield','title'=>'GDPR pages','desc'=>'Privacy Policy and Terms auto-fill with company data.'),
+          array('icon'=>'dashicons-admin-generic','title'=>'Cookie consent','desc'=>'OPT-IN cookie banner with granular categories. Blocks scripts until consent.'),
+          array('icon'=>'dashicons-media-text','title'=>'Auto-fill from data','desc'=>'Company name, address, VAT — pulled from Site Data.'),
+          array('icon'=>'dashicons-yes-alt','title'=>'One-click compliance','desc'=>'Generate all required legal pages and go live in under 2 minutes.'),
+        ),
+        'stats' => 'Privacy + Terms + Cookie pages · OPT-IN banner · GDPR ready',
+        'fake_fields' => array(
+          array('label'=>'Enable Legal Module','type'=>'toggle','checked'=>true),
+          array('label'=>'Privacy Policy Page','type'=>'select','value'=>'Privacy Policy'),
+          array('label'=>'Cookie Banner','type'=>'toggle','checked'=>true),
+          array('label'=>'Banner Position','type'=>'select','value'=>'Bottom'),
+          array('label'=>'Auto-generate Terms','type'=>'toggle','checked'=>false),
+          array('label'=>'Company Data Source','type'=>'text','value'=>'Site Data (auto)'),
+        ),
+      ),
+      'forms' => array(
+        'tabs'  => array('Forms', 'Style', 'Notifications', 'Spam Protection'),
+        'features' => array(
+          array('icon'=>'dashicons-email-alt','title'=>'10 form slots','desc'=>'Shortcodes [langaform_1] through [langaform_10]. Each fully configurable.'),
+          array('icon'=>'dashicons-art','title'=>'Branded styling','desc'=>'Forms inherit your brand colors automatically.'),
+          array('icon'=>'dashicons-bell','title'=>'Email notifications','desc'=>'Instant email on submission. Custom recipient per form.'),
+          array('icon'=>'dashicons-shield','title'=>'Spam protection','desc'=>'Honeypot fields + rate limiting. No CAPTCHA needed.'),
+        ),
+        'stats' => '10 forms · Branded · Email alerts · Honeypot spam protection',
+        'fake_fields' => array(
+          array('label'=>'Enable Forms Module','type'=>'toggle','checked'=>true),
+          array('label'=>'Form 1 Recipient','type'=>'text','value'=>'info@company.com'),
+          array('label'=>'Subject Prefix','type'=>'text','value'=>'[Contact Form]'),
+          array('label'=>'Honeypot Protection','type'=>'toggle','checked'=>true),
+          array('label'=>'Rate Limit','type'=>'select','value'=>'3 per minute'),
+          array('label'=>'Custom CSS','type'=>'toggle','checked'=>false),
+        ),
+      ),
+      'bc' => array(
+        'tabs'  => array('Main Card', 'Staff Profiles', 'Style', 'Map & QR'),
+        'features' => array(
+          array('icon'=>'dashicons-id-alt','title'=>'Digital business card','desc'=>'Professional /bc page with company info, social links, and vCard.'),
+          array('icon'=>'dashicons-groups','title'=>'Staff profiles','desc'=>'Unlimited team members at /bc/name with photo, role, contacts.'),
+          array('icon'=>'dashicons-location-alt','title'=>'Embedded map','desc'=>'Google Maps showing your office location.'),
+          array('icon'=>'dashicons-smartphone','title'=>'QR code','desc'=>'Auto-generated QR code for each card. Scan to save contact.'),
+        ),
+        'stats' => 'Company card · Team profiles · vCard · Map · QR code',
+        'fake_fields' => array(
+          array('label'=>'Enable BC Module','type'=>'toggle','checked'=>true),
+          array('label'=>'Company Name','type'=>'text','value'=>'ACME Corp'),
+          array('label'=>'Show Map','type'=>'toggle','checked'=>true),
+          array('label'=>'QR Code','type'=>'toggle','checked'=>true),
+          array('label'=>'vCard Download','type'=>'toggle','checked'=>true),
+          array('label'=>'Staff Section','type'=>'toggle','checked'=>false),
+        ),
+      ),
+      'popup' => array(
+        'tabs'  => array('Content', 'Triggers', 'Style', 'Conditions'),
+        'features' => array(
+          array('icon'=>'dashicons-welcome-widgets-menus','title'=>'Visual popup builder','desc'=>'WYSIWYG content with custom HTML, images, and buttons.'),
+          array('icon'=>'dashicons-clock','title'=>'Smart triggers','desc'=>'Exit intent, scroll depth, time delay, page count.'),
+          array('icon'=>'dashicons-art','title'=>'Full style control','desc'=>'Overlay opacity, border radius, shadow, position — pixel-perfect.'),
+          array('icon'=>'dashicons-chart-bar','title'=>'Zero dependencies','desc'=>'No jQuery, no layout shifts. Loads only when needed.'),
+        ),
+        'stats' => 'Visual builder · Smart triggers · No jQuery · Performance-first',
+        'fake_fields' => array(
+          array('label'=>'Enable Popup','type'=>'toggle','checked'=>true),
+          array('label'=>'Trigger','type'=>'select','value'=>'Exit Intent'),
+          array('label'=>'Delay (seconds)','type'=>'text','value'=>'3'),
+          array('label'=>'Show Once Per Session','type'=>'toggle','checked'=>true),
+          array('label'=>'Overlay Opacity','type'=>'text','value'=>'0.6'),
+          array('label'=>'Border Radius','type'=>'text','value'=>'12px'),
+        ),
+      ),
+      'bridge' => array(
+        'tabs'  => array('Events', 'Forwarding', 'Filters', 'Export'),
+        'features' => array(
+          array('icon'=>'dashicons-chart-area','title'=>'Event logging','desc'=>'Track form submissions, orders, logins, and custom events locally.'),
+          array('icon'=>'dashicons-admin-site','title'=>'Remote bridge','desc'=>'Forward events to your agency server for centralized monitoring.'),
+          array('icon'=>'dashicons-filter','title'=>'Smart filters','desc'=>'Filter by event type, date range, site. Export as CSV.'),
+          array('icon'=>'dashicons-database','title'=>'Local storage','desc'=>'Events stored locally with optional forwarding. Works offline.'),
+        ),
+        'stats' => 'Local events · Remote bridge · CSV export · Filters',
+        'fake_fields' => array(
+          array('label'=>'Enable Events','type'=>'toggle','checked'=>true),
+          array('label'=>'Log Form Submissions','type'=>'toggle','checked'=>true),
+          array('label'=>'Forward To','type'=>'text','value'=>'https://your-server.com'),
+          array('label'=>'Retention Days','type'=>'select','value'=>'90 days'),
+        ),
+      ),
+      'ai' => array(
+        'tabs'  => array('Providers', 'API Keys', 'Usage', 'Settings'),
+        'features' => array(
+          array('icon'=>'dashicons-format-chat','title'=>'Multi-provider hub','desc'=>'Manage OpenAI, Anthropic, and Google AI keys in one place.'),
+          array('icon'=>'dashicons-admin-network','title'=>'Centralized keys','desc'=>'Set once, use everywhere across modules.'),
+          array('icon'=>'dashicons-chart-line','title'=>'Usage monitoring','desc'=>'Track API calls and costs per provider.'),
+          array('icon'=>'dashicons-admin-plugins','title'=>'Ready for the future','desc'=>'AI features coming to Forms, SEO, and Legal modules.'),
+        ),
+        'stats' => 'OpenAI · Anthropic · Google AI · Centralized management',
+        'fake_fields' => array(
+          array('label'=>'Enable AI Module','type'=>'toggle','checked'=>false),
+          array('label'=>'OpenAI Key','type'=>'text','value'=>'sk-••••••••••••'),
+          array('label'=>'Anthropic Key','type'=>'text','value'=>'(not set)'),
+          array('label'=>'Default Provider','type'=>'select','value'=>'OpenAI'),
+        ),
+      ),
+    );
+    $t = isset($teasers[$module]) ? $teasers[$module] : array(
+      'tabs' => array('General', 'Settings', 'Advanced'),
+      'features' => array(
+        array('icon'=>'dashicons-admin-generic','title'=>'Full configuration','desc'=>'Every setting you need to customize this module.'),
+        array('icon'=>'dashicons-yes-alt','title'=>'Production ready','desc'=>'Built for real sites. Tested, stable, lightweight.'),
+      ),
+      'stats' => 'Professional grade module',
+      'fake_fields' => array(
+        array('label'=>'Enable module','type'=>'toggle','checked'=>true),
+        array('label'=>'Primary setting','type'=>'text','value'=>'configured...'),
+      ),
+    );
+    $mod_name = esc_html(isset($f['menu']) ? $f['menu'] : $module);
+    echo '<div class="wrap">';
+    echo '<h1>'.esc_html($f['title']).' <span style="background:#f37f0d;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;vertical-align:middle">PRO</span></h1>';
+
+    // Single container for consistent alignment
+    echo '<div style="max-width:965px;margin:12px 0 0">';
+
+    // Promo banner top
+    echo '<div style="background:linear-gradient(135deg,#1d1d1f 0%,#333 100%);border-radius:12px;padding:20px 24px;margin:0 0 16px;display:flex;align-items:center;gap:16px">';
+    echo '<div style="flex:1"><div style="font-size:18px;font-weight:700;color:#fff;margin:0 0 4px"><span style="color:#f37f0d">PRO</span> Module — '.$mod_name.'</div>';
+    echo '<div style="font-size:13px;color:rgba(255,255,255,.65);line-height:1.5">This module is included with Tools PRO. Preview the features below, then upgrade to unlock everything.</div></div>';
+    echo '<a href="https://tools.langa.tv/#pricing" target="_blank" style="flex-shrink:0;display:inline-block;padding:10px 24px;background:#f37f0d;color:#fff;font-weight:700;font-size:13px;border-radius:8px;text-decoration:none;white-space:nowrap">Get PRO License &rarr;</a>';
+    echo '</div>';
+
+    // Feature cards 4 columns
+    echo '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 14px">';
+    foreach ($t['features'] as $feat) {
+      echo '<div style="background:#fff;border:1px solid #e5e5e7;border-radius:10px;padding:14px 16px;border-left:3px solid #f37f0d;display:flex;flex-direction:column;box-sizing:border-box">';
+      echo '<div style="display:flex;align-items:center;gap:8px;margin:0 0 5px"><span class="dashicons '.esc_attr($feat['icon']).'" style="font-size:16px;width:16px;height:16px;color:#f37f0d"></span><strong style="font-size:13px;color:#1d1d1f">'.esc_html($feat['title']).'</strong></div>';
+      echo '<p style="margin:0;font-size:11px;color:#6e6e73;line-height:1.45;flex:1">'.esc_html($feat['desc']).'</p></div>';
+    }
+    echo '</div>';
+
+    // Stats bar
+    echo '<div style="margin:0 0 16px;padding:8px 16px;background:#fef3e2;border:1px solid #fcd9b1;border-radius:8px;font-size:12px;color:#7c3d06;text-align:center;font-weight:600">'.esc_html($t['stats']).'</div>';
+
+    // Blurred panel
+    echo '<div style="position:relative;margin:0 0 16px;border:1px solid #e5e5e7;border-radius:12px;overflow:hidden;background:#fff">';
+    echo '<div style="display:flex;gap:0;border-bottom:1px solid #e5e5e7;background:#fafafa">';
+    foreach ($t['tabs'] as $i => $tab) {
+      echo $i===0 ? '<span style="padding:10px 20px;font-size:13px;font-weight:600;color:#1d1d1f;border-bottom:2px solid #f37f0d;margin-bottom:-1px;background:#fff">'.esc_html($tab).'</span>' : '<span style="padding:10px 20px;font-size:13px;color:#b0b0b0">'.esc_html($tab).'</span>';
+    }
+    echo '</div>';
+    echo '<div style="position:relative;min-height:300px"><div style="filter:blur(3px);pointer-events:none;user-select:none;opacity:.4;padding:20px 24px">';
+    echo '<table class="form-table" style="margin:0"><tbody>';
+    foreach (($t['fake_fields'] ?? array()) as $ff) {
+      echo '<tr><th scope="row" style="width:200px;padding:12px 10px 12px 0;font-size:13px">'.esc_html($ff['label']).'</th><td style="padding:12px 0">';
+      if ($ff['type']==='toggle') echo '<label><input type="checkbox" disabled '.(!empty($ff['checked'])?'checked':'').'> Enabled</label>';
+      elseif ($ff['type']==='select') echo '<select disabled style="min-width:200px"><option>'.esc_html($ff['value']??'').'</option></select>';
+      else echo '<input type="text" disabled class="regular-text" value="'.esc_attr($ff['value']??'').'" style="max-width:360px">';
+      echo '</td></tr>';
+    }
+    echo '</tbody></table></div>';
+    // CTA overlay
+    echo '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;background:rgba(255,255,255,.15)">';
+    echo '<a href="https://tools.langa.tv/#pricing" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:14px 36px;background:#1d1d1f;color:#fff;font-weight:700;font-size:15px;border-radius:10px;text-decoration:none;box-shadow:0 4px 20px rgba(0,0,0,.25)"><span class="dashicons dashicons-unlock" style="font-size:18px;width:18px;height:18px"></span> Unlock '.$mod_name.'</a>';
+    echo '<p style="margin:10px 0 0;font-size:12px;color:#6e6e73">From &euro;4.99/month &middot; All modules &euro;19.90/month &middot; Cancel anytime</p>';
+    echo '</div></div></div>';
+
+    // Bottom promo strip
+    echo '<div style="margin:0 0 16px;padding:14px 20px;background:linear-gradient(90deg,#f37f0d,#e06800);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:16px">';
+    echo '<div><div style="color:#fff;font-weight:700;font-size:14px">Ready to go PRO?</div><div style="color:rgba(255,255,255,.8);font-size:12px;margin-top:2px">One license unlocks all modules. No subscriptions required for yearly plans.</div></div>';
+    echo '<a href="https://tools.langa.tv/#pricing" target="_blank" style="flex-shrink:0;display:inline-block;padding:8px 20px;background:#fff;color:#f37f0d;font-weight:700;font-size:13px;border-radius:8px;text-decoration:none">View Plans &rarr;</a>';
+    echo '</div>';
+
+    echo '</div>'; // end max-width container
+    echo '</div>'; // end wrap
     return;
   }
+
 
   // UI lock should use the raw config enabled state, not Bridge gating.
   $enabled = function_exists('langa_tools_client_feature_is_config_enabled')
@@ -63,9 +292,20 @@ function _langa_tools_client_module_page_inner($module) {
 
   $settings_modules_url = admin_url('admin.php?page=langa-tools-client-settings&tab=general#langa-modules');
 
-  // Lite: all modules always enabled, no license checks
+  $license_real_invalid = function_exists('langa_tools_client_license_is_valid') && !langa_tools_client_license_is_valid();
+  $dev_bypass = langa_tools_client_dev_bypass_active();
+  $is_free_module = !empty($f['free']);
+  $license_invalid = $license_real_invalid && !$dev_bypass && !$is_free_module;
+
+  $lm = get_option('langa_tools_licensed_modules', array());
+  $mod_lic = (is_array($lm) && isset($lm[$module])) ? $lm[$module] : null;
+  $mod_licensed = $mod_lic && !empty($mod_lic['active']);
+  $mod_expires = ($mod_lic && !empty($mod_lic['expires'])) ? $mod_lic['expires'] : null;
+  $mod_expired = $mod_expires && strtotime($mod_expires) < time();
+
+  $can_toggle = !$license_invalid || $is_free_module;
   $is_on = $enabled;
-  if (true) $is_on = true;
+  if ($is_free_module) $is_on = true;
 
   echo '<div class="langa-module-enable" style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;padding:16px 20px;border-left:4px solid '.esc_attr($vp_color).';background:linear-gradient(135deg,'.esc_attr($vp_color).'06,transparent);border:1px solid '.esc_attr($vp_color).'18;border-left:4px solid '.esc_attr($vp_color).';border-radius:0 10px 10px 0">';
 
@@ -83,9 +323,9 @@ function _langa_tools_client_module_page_inner($module) {
 
       echo '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#86868b">';
         echo '<span style="font-weight:600">License:</span>';
-        if (true) {
+        if ($is_free_module) {
           echo '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:#f0f0f2;color:#6e6e73">FREE</span>';
-        } elseif (false) {
+        } elseif ($license_invalid) {
           echo '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:#f0f0f2;color:#b71c1c">INVALID</span>';
         } elseif ($mod_expired) {
           echo '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:#f0f0f2;color:#b71c1c">EXPIRED</span>';
@@ -103,7 +343,7 @@ function _langa_tools_client_module_page_inner($module) {
       echo '<div style="display:flex;align-items:center;gap:6px">';
         $sw_bg = $is_on ? '#16a34a' : '#d4d4d8';
         $sw_dot = $is_on ? 'calc(100% - 17px)' : '2px';
-        if (true && !true) {
+        if ($can_toggle && !$is_free_module) {
           $toggle_url = wp_nonce_url(
             admin_url('admin-post.php?action=langa_tools_client_save_module&module=' . urlencode($module) . '&new_active=' . ($enabled ? '0' : '1')),
             'langa_tools_client_save_module_' . $module
@@ -133,10 +373,13 @@ function _langa_tools_client_module_page_inner($module) {
   $locked = !$enabled;
 
   // License kill-switch: force lock ALL modules when license is invalid
-  if (false) {
+  if ($license_invalid) {
     $locked = true;
   }
 
+  if ($locked && $license_invalid) {
+    echo '<div class="langa-locked-hint" style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin:0 0 12px;border:1px solid #f5c6cb;border-left:4px solid #b71c1c;background:#fce4ec;color:#b71c1c;border-radius:8px;font-size:13px;"><span class="dashicons dashicons-lock"></span> License invalid — all modules and features are locked. <a href="' . esc_url(admin_url('admin.php?page=langa-tools-client-settings&tab=general')) . '">Verify license</a></div>';
+  }
 
   // Disable inputs when module is OFF.
   if (!empty($locked)) { echo '<fieldset disabled>'; }
@@ -582,7 +825,7 @@ function langa_tools_client_render_inline_pack($packs, $current, $input_name, $s
 
   echo '<div style="margin:0 0 16px">';
   echo '<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px">';
-  echo '<h3 style="margin:0;font-size:14px">'.esc_html($module_label).'</h3>';
+  echo '<h3 style="margin:0;font-size:14px">'.$module_label.'</h3>';
 
   $pack_labels = array();
   foreach ($packs as $pk => $pd) $pack_labels[$pk] = $pd['name'];
@@ -605,7 +848,7 @@ function langa_tools_client_render_inline_pack($packs, $current, $input_name, $s
     $bg = $is_selected ? 'linear-gradient(135deg, '.$pd['color'].'08, '.$pd['color'].'03)' : '#fff';
     $badge = $is_selected ? '<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;background:'.esc_attr($pd['color']).';color:#fff;text-transform:uppercase;letter-spacing:.05em;margin-left:6px">Active</span>' : '';
 
-    echo '<label style="display:block;border:'.esc_attr($border).';border-radius:12px;padding:18px;cursor:pointer;background:'.esc_attr($bg).';transition:all .15s">';
+    echo '<label style="display:block;border:'.$border.';border-radius:12px;padding:18px;cursor:pointer;background:'.$bg.';transition:all .15s">';
     echo '<div style="display:flex;align-items:center;gap:8px;margin:0 0 8px">';
     echo '<span class="dashicons '.esc_attr($pd['icon']).'" style="font-size:20px;width:20px;height:20px;color:'.esc_attr($pd['color']).'"></span>';
     echo '<div>';
@@ -628,9 +871,9 @@ function langa_tools_client_render_inline_pack($packs, $current, $input_name, $s
   echo '</div>';
 
   // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin inline JS for immediate DOM manipulation
-  $_ijs='';
-  $_ijs.='(function(){var btn=document.getElementById("'.esc_js($uid).'-btn");if(!btn)return;btn.addEventListener("click",function(e){var sel=document.querySelector("input[name=\"'.esc_js($input_name).'\"]:checked");if(!sel)return;var cur='.wp_json_encode($current).';if(sel.value===cur)return;if(!confirm('.wp_json_encode($warning_text).'))e.preventDefault();});})();';
-  wp_print_inline_script_tag($_ijs);
+  echo '<script>';
+  echo '(function(){var btn=document.getElementById("'.esc_js($uid).'-btn");if(!btn)return;btn.addEventListener("click",function(e){var sel=document.querySelector("input[name=\"'.esc_js($input_name).'\"]:checked");if(!sel)return;var cur='.wp_json_encode($current).';if(sel.value===cur)return;if(!confirm('.wp_json_encode($warning_text).'))e.preventDefault();});})();';
+  echo '</script>';
 
   echo '</div></div>';
 }

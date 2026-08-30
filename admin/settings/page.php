@@ -19,6 +19,35 @@ function langa_tools_client_settings_page() {
 
   // Save general settings — handled in admin_init (early, before admin_notices).
   // This block only runs as fallback if admin_init didn't redirect.
+  if ($tab === 'general' && !empty($_POST['save_settings']) && empty($_GET['saved'])) {
+    check_admin_referer('langa_tools_client_save_settings', 'langa_tools_client_save_settings_nonce');
+
+    $site_key = sanitize_text_field(isset($_POST['site_key']) ? $_POST['site_key'] : '');
+    $secret   = sanitize_text_field(isset($_POST['secret']) ? $_POST['secret'] : '');
+
+    update_option(LANGA_TOOLS_OPTION_SERVER_URL, LANGA_TOOLS_FIXED_SERVER_URL);
+    update_option(LANGA_TOOLS_OPTION_SITE_KEY, $site_key);
+    update_option(LANGA_TOOLS_OPTION_SECRET, $secret);
+
+    // Nuke ALL cached license state
+    delete_transient('langa_license_killswitch');
+    langa_tools_client_license_clear_last_ok();
+    langa_tools_client_license_clear_revoked();
+
+    // Force IMMEDIATE live check → sets killswitch transient to 'valid' or 'blocked'
+    // Frontend reads this on the very next page load — no 72h grace delay.
+    if (function_exists('langa_tools_client_license_is_valid')) {
+      $new_valid = langa_tools_client_license_is_valid(true);
+    }
+
+    // Flush page caches so frontend HTML is regenerated
+    if (function_exists('langa_credits_flush_page_caches')) {
+      langa_credits_flush_page_caches();
+    }
+
+    add_settings_error('langa_tools_client', 'settings_saved', 'Settings saved.', 'updated');
+  }
+
   // Save Data (company/billing/shipping/bank/vCard)
   if ($tab === 'data' && !empty($_POST['save_data_settings'])) {
     check_admin_referer('langa_tools_client_save_data_settings', 'langa_tools_client_save_data_settings_nonce');
@@ -82,8 +111,8 @@ if ($tab === 'endpoint' && !empty($_POST['save_thankyou'])) {
   add_settings_error('langa_tools_client', 'thankyou_saved', 'Thank You page saved.', 'updated');
 }
 
-// Save Invio (Server) settings (SMTP/From) — requires mail module
-if ($tab === 'endpoint' && !empty($_POST['save_mail_settings']) && function_exists('langa_tools_client_mail_defaults')) {
+// Save Invio (Server) settings (SMTP/From)
+if ($tab === 'endpoint' && !empty($_POST['save_mail_settings'])) {
   check_admin_referer('langa_tools_client_save_mail_settings', 'langa_tools_client_save_mail_settings_nonce');
 
   $raw = isset($_POST['mail']) && is_array($_POST['mail']) ? wp_unslash($_POST['mail']) : array();
@@ -377,7 +406,7 @@ if ($tab === 'endpoint' && !empty($_POST['send_test_mail'])) {
   echo '<h2 class="nav-tab-wrapper">';
   echo '<a class="nav-tab '.($tab==='general'?'nav-tab-active':'').'" href="'.esc_url($base_url.'&tab=general').'">General</a>';
   echo '<a class="nav-tab '.($tab==='data'?'nav-tab-active':'').'" href="'.esc_url($base_url.'&tab=data').'">Data</a>';
-  // Email (Server) tab removed from Lite WP.org build.
+  echo '<a class="nav-tab '.($tab==='endpoint'?'nav-tab-active':'').'" href="'.esc_url($base_url.'&tab=endpoint').'">Email (Server)</a>';
   echo '<a class="nav-tab '.($tab==='debug'?'nav-tab-active':'').'" href="'.esc_url($base_url.'&tab=debug').'">Debug</a>';
   echo '<a class="nav-tab '.($tab==='test'?'nav-tab-active':'').'" href="'.esc_url($base_url.'&tab=test').'">Site Health</a>';
   echo '<a class="nav-tab '.($tab==='help'?'nav-tab-active':'').'" href="'.esc_url($base_url.'&tab=help').'">Help</a>';
@@ -414,14 +443,49 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
   echo '<form method="post">';
   wp_nonce_field('langa_tools_client_save_settings', 'langa_tools_client_save_settings_nonce');
 
-  // Lite WP.org: no license checking.
-  $ok = true;
+  // Header: license status
+  $status = 'invalid';
+  $reason = '';
+  $http = 0;
+  $body = '';
 
+  if ($site_key && $secret) {
+    $force = !empty($_POST['check_license_now']);
+    if ($force) {
+      check_admin_referer('langa_tools_client_check_license', 'langa_tools_client_check_license_nonce');
+      delete_transient('langa_license_killswitch');
+    }
+    $r = langa_tools_client_validate_credentials($site_key, $secret);
+    $status = isset($r['status']) ? (string)$r['status'] : 'invalid';
+    $reason = isset($r['reason']) ? (string)$r['reason'] : '';
+    $http   = isset($r['http']) ? (int)$r['http'] : 0;
+    $body   = isset($r['body']) ? (string)$r['body'] : '';
+
+    // Sync result into kill-switch cache + license_last so the rest of admin reflects it.
+    $lic_ok = ($status === 'valid');
+    set_transient('langa_license_killswitch', $lic_ok ? 'valid' : 'blocked', 600);
+    if (function_exists('langa_tools_client_license_store_last')) {
+      langa_tools_client_license_store_last(array('ok' => $lic_ok, 'status' => $status, 'reason' => $reason, 'http' => $http, 'error' => ''));
+    }
+    // When server explicitly says INVALID, kill grace period data.
+    // Grace period is only for server-unreachable scenarios.
+    if (!$lic_ok && function_exists('langa_tools_client_license_clear_last_ok')) {
+      langa_tools_client_license_clear_last_ok();
+    }
+  }
+
+  $ok = ($status === 'valid');
   $dev_bypass = langa_tools_client_dev_bypass_active();
   $ok_for_health = $ok || $dev_bypass; // bypass makes modules "unlocked" for health checks
 
   echo '<div style="display:flex;align-items:center;gap:12px;margin:14px 0 10px 0;font-size:14px;">';
-  echo '<span style="font-weight:600;color:#1b5e20;">&#10003; LANGA Tools Lite</span>';
+  if ($ok) {
+    echo '<span style="font-weight:600;color:#1b5e20;">&#10003; License VALID</span>';
+  } elseif ($dev_bypass) {
+    echo '<span style="font-weight:600;color:#b71c1c;">License BYPASS</span>';
+  } else {
+    echo '<span style="font-weight:600;color:#b71c1c;">&#10007; License INVALID</span>';
+  }
   echo '<span style="font-size:12px;color:#6e6e73">v' . esc_html(defined('LANGA_TOOLS_CLIENT_VERSION') ? LANGA_TOOLS_CLIENT_VERSION : '?') . '</span>';
   echo '</div>';
 
@@ -430,13 +494,45 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
   $health_rows = array();
 
   // 1. License
+  $is_revoked = function_exists('langa_tools_client_license_is_revoked') && langa_tools_client_license_is_revoked();
+  $lic_detail = $ok ? 'Valid' : ('Invalid' . ($reason ? ' — ' . $reason : ''));
+  if ($dev_bypass && !$ok) $lic_detail = '<strong style="color:#b71c1c">BYPASS</strong>';
+  if ($is_revoked) $lic_detail = '<strong style="color:#b71c1c">REVOKED</strong>' . ($reason ? ' — ' . esc_html($reason) : '');
   $health_rows[] = array(
-    'label' => 'Edition',
-    'status' => 'ok',
-    'detail' => 'Lite &mdash; free, all features included',
+    'label' => 'License',
+    'status' => $ok ? 'ok' : ($dev_bypass ? 'warn' : 'fail'),
+    'detail' => $lic_detail,
     'link'   => '',
   );
 
+  // 1b. Domain binding
+  $last_ok_data = function_exists('langa_tools_client_license_get_last_ok') ? langa_tools_client_license_get_last_ok() : array();
+  $bound_domain = isset($last_ok_data['domain']) ? (string) $last_ok_data['domain'] : '';
+  $local_domain = function_exists('langa_tools_client_license_get_domain') ? langa_tools_client_license_get_domain() : '';
+  if ($bound_domain !== '') {
+    $domain_match = ($bound_domain === $local_domain || (strpos($bound_domain, '*.') === 0 && (substr($local_domain, -(strlen(substr($bound_domain, 2)) + 1)) === '.' . substr($bound_domain, 2) || $local_domain === substr($bound_domain, 2))));
+    $health_rows[] = array(
+      'label' => 'Domain',
+      'status' => $domain_match ? 'ok' : 'fail',
+      'detail' => esc_html($local_domain) . ($domain_match ? '' : ' ≠ ' . esc_html($bound_domain)),
+      'link'   => '',
+    );
+  }
+
+  // 1c. Grace period status (if server unreachable)
+  if (!$ok && !$is_revoked && !empty($last_ok_data['time'])) {
+    $grace_age = time() - (int) $last_ok_data['time'];
+    $grace_max = defined('LANGA_LICENSE_GRACE_DEFAULT') ? LANGA_LICENSE_GRACE_DEFAULT : 259200;
+    $grace_remaining = max(0, $grace_max - $grace_age);
+    if ($grace_remaining > 0) {
+      $health_rows[] = array(
+        'label' => 'Grace period',
+        'status' => 'warn',
+        'detail' => 'Active — expires in ' . round($grace_remaining / 3600) . 'h',
+        'link'   => '',
+      );
+    }
+  }
 
   // 2. Data completeness
   if (function_exists('langa_tools_client_data_complete')) {
@@ -450,6 +546,29 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
     );
   }
 
+  // 3. Endpoint (SMTP / mail)
+  $mail_s = function_exists('langa_tools_client_mail_get_settings') ? langa_tools_client_mail_get_settings() : array();
+  $smtp_host = (string)($mail_s['smtp']['host'] ?? '');
+  $mail_enabled = !empty($mail_s['enabled']);
+  if ($mail_enabled && $smtp_host !== '') {
+    $health_rows[] = array('label' => 'Email Delivery (SMTP)', 'status' => 'ok', 'detail' => $smtp_host, 'link' => $base_url . '&tab=endpoint');
+  } elseif ($mail_enabled) {
+    $health_rows[] = array('label' => 'Email Delivery', 'status' => 'warn', 'detail' => 'Active but no SMTP configured (uses wp_mail default)', 'link' => $base_url . '&tab=endpoint');
+  } else {
+    $health_rows[] = array('label' => 'Email Delivery', 'status' => 'fail', 'detail' => 'Disabled', 'link' => $base_url . '&tab=endpoint');
+  }
+
+  // 3. Last ping latency (from license_last cache)
+  $lic_last = function_exists('langa_tools_client_license_last') ? langa_tools_client_license_last() : array();
+  $last_ts = isset($lic_last['checked_at']) ? (int)$lic_last['checked_at'] : 0;
+  if ($last_ts > 0) {
+    $age = time() - $last_ts;
+    $ago = $age < 120 ? $age . 's fa' : round($age / 60) . 'min fa';
+    $last_ok = !empty($lic_last['ok']);
+    $health_rows[] = array('label' => 'Last server check', 'status' => $last_ok ? 'ok' : 'warn', 'detail' => $ago . ' — HTTP ' . (int)($lic_last['http'] ?? 0), 'link' => '');
+  } else {
+    $health_rows[] = array('label' => 'Last server check', 'status' => 'warn', 'detail' => 'No recent check', 'link' => '');
+  }
 
   // 4. Modules enabled count — use registry as source of truth
   $reg_all = function_exists('langa_tools_client_features_registry') ? langa_tools_client_features_registry() : array();
@@ -462,11 +581,54 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
   }
   $bridge_on = function_exists('langa_tools_client_feature_is_config_enabled')
     ? (bool)langa_tools_client_feature_is_config_enabled('bridge') : false;
+  if (!$ok_for_health) {
+    // No license — only free modules (bridge) count as active
+    $free_count = $bridge_on ? 1 : 0;
+    $health_rows[] = array('label' => 'Active modules', 'status' => $free_count > 0 ? 'warn' : 'fail', 'detail' => $free_count . '/' . $total_count . ' — PRO modules locked (Events is free)', 'link' => $base_url . '&tab=general#langa-modules');
+  } else {
     $health_rows[] = array('label' => 'Active modules', 'status' => $enabled_count > 0 ? 'ok' : 'warn', 'detail' => $enabled_count . '/' . $total_count, 'link' => $base_url . '&tab=general#langa-modules');
+  }
 
+  // 5. Forms pipeline
+  if (!$ok_for_health) {
+    $health_rows[] = array('label' => 'Forms', 'status' => 'fail', 'detail' => 'Locked — invalid license', 'link' => '');
+  } else {
+  $forms_cfg = function_exists('langa_tools_client_feature_is_config_enabled') ? langa_tools_client_feature_is_config_enabled('forms') : 0;
+  $forms_s = get_option('langa_tools_forms_settings', array());
+  $forms_recip = trim((string)($forms_s['recipient'] ?? ''));
+  $global_recip = function_exists('langa_tools_client_mail_get_primary_recipient') ? (string)langa_tools_client_mail_get_primary_recipient() : '';
+  if (!$forms_cfg) {
+    $health_rows[] = array('label' => 'Forms', 'status' => 'warn', 'detail' => 'Disabled', 'link' => admin_url('admin.php?page=langa-tools-client-forms'));
+  } elseif ($forms_recip === '' && $global_recip === '') {
+    $health_rows[] = array('label' => 'Forms', 'status' => 'warn', 'detail' => 'Active but no recipient', 'link' => admin_url('admin.php?page=langa-tools-client-forms'));
+  } elseif ($forms_recip === '') {
+    $health_rows[] = array('label' => 'Forms', 'status' => 'ok', 'detail' => 'Active → fallback: ' . esc_html($global_recip), 'link' => admin_url('admin.php?page=langa-tools-client-forms'));
+  } else {
+    $health_rows[] = array('label' => 'Forms', 'status' => 'ok', 'detail' => 'Active → ' . esc_html($forms_recip), 'link' => '');
+  }
+  }
 
+  // 6. BC Main pipeline
+  if (!$ok_for_health) {
+    $health_rows[] = array('label' => 'BC Main', 'status' => 'fail', 'detail' => 'Locked — invalid license', 'link' => '');
+  } else {
+  $bc_cfg = function_exists('langa_tools_client_feature_is_config_enabled') ? langa_tools_client_feature_is_config_enabled('bc') : 0;
+  $bc_s = get_option('langa_tools_bc_settings', array());
+  $bc_main = isset($bc_s['main']) && is_array($bc_s['main']) ? $bc_s['main'] : array();
+  $bc_quote = (string)($bc_main['quote_to'] ?? '');
+  if (!$bc_cfg) {
+    $health_rows[] = array('label' => 'BC Main', 'status' => 'warn', 'detail' => 'Disabled', 'link' => admin_url('admin.php?page=langa-tools-client-bc'));
+  } elseif ($bc_quote === '') {
+    $health_rows[] = array('label' => 'BC Main', 'status' => 'warn', 'detail' => 'Active but no email recipient', 'link' => admin_url('admin.php?page=langa-tools-client-bc'));
+  } else {
+    $health_rows[] = array('label' => 'BC Main', 'status' => 'ok', 'detail' => 'Active → ' . esc_html($bc_quote), 'link' => '');
+  }
+  }
 
   // 7. Maintenance
+  if (!$ok_for_health) {
+    $health_rows[] = array('label' => 'Maintenance', 'status' => 'fail', 'detail' => 'Locked — invalid license', 'link' => '');
+  } else {
   $ax_s = get_option('langa_tools_adminux_settings', array());
   $maint_on = !empty($ax_s['maintenance']);
   $maint_recip = (string)($ax_s['maintenance_recipient'] ?? '');
@@ -476,6 +638,7 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
     $health_rows[] = array('label' => 'Maintenance', 'status' => 'warn', 'detail' => 'Active but no dedicated recipient', 'link' => admin_url('admin.php?page=langa-tools-client-ui-ux&tab=maintenance'));
   } else {
     $health_rows[] = array('label' => 'Maintenance', 'status' => 'ok', 'detail' => 'Active → ' . esc_html($maint_recip), 'link' => '');
+  }
   }
 
   // 8. Events — always free, never locked by license
@@ -497,6 +660,34 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
   // LEFT column
   echo '<div>';
 
+  // Fully blurred License panel — mirrors PRO layout exactly with fake data
+  echo '<div style="position:relative;margin:0 0 14px;border:1px solid #e5e5e7;border-radius:12px;overflow:hidden;background:#fff">';
+  echo '<div style="padding:12px 16px;border-bottom:1px solid #e5e5e7;background:#fafafa;display:flex;align-items:center;justify-content:space-between">';
+  echo '<strong style="font-size:13px;color:#1d1d1f">License — PRO Modules</strong>';
+  echo '</div>';
+  echo '<div style="position:relative;min-height:260px">';
+  echo '<div style="filter:blur(3px);pointer-events:none;user-select:none;opacity:.35">';
+  // Credentials section (same as PRO)
+  echo '<div style="padding:16px 20px;border-bottom:1px solid #f0f0f0">';
+  echo '<table class="form-table" role="presentation" style="margin:0">';
+  echo '<tr><th scope="row" style="width:80px;padding:6px 0;font-size:13px">Server</th><td style="padding:6px 0"><code style="font-size:12px">https://tools.langa.tv</code></td></tr>';
+  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Site Key</th><td style="padding:6px 0"><input type="text" disabled class="regular-text" style="width:100%;font-family:monospace;font-size:12px" value="ak3nP937x22z13C5up"></td></tr>';
+  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Secret</th><td style="padding:6px 0"><input type="text" disabled class="regular-text" style="width:100%;font-family:monospace;font-size:12px" value="Rfd31hBa8pccT7vS6p1fGMb63"></td></tr>';
+  echo '</table></div>';
+  // License info section (same as PRO)
+  echo '<div style="padding:16px 20px">';
+  echo '<table class="form-table" role="presentation" style="margin:0">';
+  echo '<tr><th scope="row" style="width:120px;padding:6px 0;font-size:13px">Status</th><td style="padding:6px 0"><span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600">VALID</span></td></tr>';
+  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Modules</th><td style="padding:6px 0"><span style="font-size:12px">11 modules licensed</span></td></tr>';
+  echo '<tr><th scope="row" style="padding:6px 0;font-size:13px">Expires</th><td style="padding:6px 0"><span style="font-size:12px">01/01/2027</span></td></tr>';
+  echo '</table></div>';
+  echo '</div>'; // end blur
+  // CTA overlay
+  echo '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2">';
+  echo '<a href="https://tools.langa.tv/#pricing" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:14px 36px;background:#1d1d1f;color:#fff;font-weight:700;font-size:15px;border-radius:10px;text-decoration:none;box-shadow:0 4px 20px rgba(0,0,0,.25)"><span class="dashicons dashicons-unlock" style="font-size:18px;width:18px;height:18px"></span> Unlock PRO</a>';
+  echo '<p style="margin:10px 0 0;font-size:12px;color:#6e6e73">From &euro;4.99/month &middot; All modules included &middot; Cancel anytime</p>';
+  echo '</div></div>';
+  echo '</div>';
 
   // ── MODULES (same left column) ──────────────────────────
   echo '<div id="langa-modules" class="langa-card" style="margin:0;padding:0">';
@@ -526,8 +717,8 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
   foreach ($health_rows as $hr) {
     $badge = $badge_map[$hr['status']] ?? $badge_map['warn'];
     echo '<tr style="border-bottom:1px solid #f5f5f7">';
-    echo '<td style="padding:9px 14px;font-weight:600;white-space:nowrap">' . wp_kses($badge, array('span' => array('class' => array()))) . ' ' . esc_html($hr['label']) . '</td>';
-    echo '<td style="padding:9px 14px;color:#6e6e73">' . esc_html($hr['detail']) . '</td>';
+    echo '<td style="padding:9px 14px;font-weight:600;white-space:nowrap">' . $badge . ' ' . esc_html($hr['label']) . '</td>';
+    echo '<td style="padding:9px 14px;color:#6e6e73">' . $hr['detail'] . '</td>';
     echo '<td style="padding:9px 14px;text-align:right">';
     if ($hr['link'] !== '') echo '<a href="' . esc_url($hr['link']) . '" style="font-size:12px;color:#0071e3;text-decoration:none;white-space:nowrap">Go →</a>';
     echo '</td>';
@@ -543,7 +734,8 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
 
   echo '<div class="langa-inline-actions">';
   submit_button('Save', 'primary', 'save_settings', false);
-  // License check removed from Lite WP.org build.
+  wp_nonce_field('langa_tools_client_check_license', 'langa_tools_client_check_license_nonce');
+  submit_button('Check license now', 'secondary', 'check_license_now', false);
   echo '</div>';
 
   echo '</form>';
@@ -552,13 +744,13 @@ function langa_tools_client_settings_tab_general($site_key, $secret) {
 
 function langa_tools_client_settings_modules_inline() {
   $features = langa_tools_client_features_registry();
-  $license_valid = true; // Lite WP.org: all features free.
+  $license_valid = function_exists('langa_tools_client_license_is_valid') && langa_tools_client_license_is_valid();
   $dev_bypass = langa_tools_client_dev_bypass_active();
-  $can_toggle = true;
+  $can_toggle = $license_valid || $dev_bypass;
 
   // ── Status banner ──
   if (!$license_valid && !$dev_bypass) {
-    // PRO CTA removed for WP.org Lite
+    echo '<p style="margin:0;padding:8px 12px;background:#fce4ec;border-radius:0;font-size:13px;color:#b71c1c;"><span class="dashicons dashicons-lock" style="font-size:14px;width:14px;height:14px;vertical-align:middle;margin-right:4px;"></span> <strong>License required</strong> — <a href="https://tools.langa.tv/#pricing" target="_blank" style="color:#b71c1c;font-weight:600">Get PRO</a> to unlock modules.</p>';
   }
 
   echo '<table style="width:100%;border-collapse:collapse;font-size:13px">';
@@ -612,7 +804,7 @@ function langa_tools_client_settings_modules_inline() {
       echo '<span style="position:absolute;top:2px;left:'.$sw_dot.';width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)"></span></a>';
     } else {
       echo '<span class="dashicons dashicons-lock" style="font-size:16px;width:16px;height:16px;color:#d2d2d7;vertical-align:middle;margin-right:2px"></span>';
-      // PRO CTA removed for WP.org Lite
+      echo '<a class="button button-small" href="https://tools.langa.tv/#pricing" target="_blank" style="background:#f37f0d;color:#fff;border-color:#e8930c;font-weight:600;font-size:11px">Get PRO</a>';
     }
 
     if ($mod_can_toggle || $is_free) {
@@ -857,12 +1049,12 @@ function langa_tools_client_settings_tab_data() {
     echo '<span class="description">Used by Custom Login + Credits.</span>';
   echo '</div>';
   // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin inline JS for immediate DOM manipulation
-  $_ijs='';
-  $_ijs.='jQuery(function($){$(".langa-color-field").wpColorPicker();';
-  $_ijs.='var li=document.getElementById("langa-dev-logo"),lp=document.getElementById("langa-dev-logo-preview");';
-  $_ijs.='if(li&&lp){li.addEventListener("change",function(){lp.src=li.value||"'.esc_js($logo_default).'"})}';
-  $_ijs.='});';
-  wp_print_inline_script_tag($_ijs);
+  echo '<script>';
+  echo 'jQuery(function($){$(".langa-color-field").wpColorPicker();';
+  echo 'var li=document.getElementById("langa-dev-logo"),lp=document.getElementById("langa-dev-logo-preview");';
+  echo 'if(li&&lp){li.addEventListener("change",function(){lp.src=li.value||"'.esc_js($logo_default).'"})}';
+  echo '});';
+  echo '</script>';
   echo '</div>';
 
   // Link Credits footer
@@ -1278,7 +1470,7 @@ function langa_tools_client_settings_tab_endpoint() {
           echo '<p style="margin:0 0 10px;font-weight:600;font-size:14px">⚠️ Test OK but email not arriving? Issues found:</p>';
           foreach ($problems as $p) {
             echo '<div style="margin:0 0 10px;padding:10px 12px;background:#fff;border:1px solid #e5e5e7;border-radius:6px">';
-            echo '<p style="margin:0 0 4px;font-weight:600">' . esc_html($p['icon']) . ' ' . esc_html($p['title']) . '</p>';
+            echo '<p style="margin:0 0 4px;font-weight:600">' . $p['icon'] . ' ' . $p['title'] . '</p>';
             echo '<p style="margin:0 0 4px;font-size:13px;color:#86868b">' . wp_kses_post($p['desc']) . '</p>';
             echo '<p style="margin:0;font-size:13px"><strong>→</strong> ' . wp_kses_post($p['fix']) . '</p>';
             echo '</div>';
@@ -1324,6 +1516,106 @@ function langa_tools_client_settings_tab_debug() {
   echo '<div style="display:grid;grid-template-columns:3fr 1fr;gap:16px;max-width:965px;align-items:start">';
   echo '<div>'; // LEFT column
 
+  // ── Connectivity card ──
+  $site_key = (string) get_option(defined('LANGA_TOOLS_OPTION_SITE_KEY') ? LANGA_TOOLS_OPTION_SITE_KEY : 'langa_tools_site_key', '');
+  $secret   = (string) get_option(defined('LANGA_TOOLS_OPTION_SECRET') ? LANGA_TOOLS_OPTION_SECRET : 'langa_tools_secret', '');
+  $server_base = defined('LANGA_TOOLS_FIXED_SERVER_URL') ? rtrim((string) LANGA_TOOLS_FIXED_SERVER_URL, '/') : 'https://tools.langa.tv';
+
+  echo '<div class="langa-card" style="margin-bottom:16px">';
+  echo '<h3 style="margin:0 0 4px;font-size:14px">Connectivity Diagnostics</h3>';
+  echo '<p class="description" style="margin:0 0 12px">Live tests against <code>' . esc_html($server_base) . '</code></p>';
+
+  $tests = array();
+
+  $t1_url = $server_base . '/wp-json/langa-tools-server/v1/events/ping';
+  $t1_start = microtime(true);
+  $t1_resp = wp_remote_get($t1_url, array('timeout' => 12));
+  $t1_ms = round((microtime(true) - $t1_start) * 1000);
+  $tests[] = array('label' => 'Ping (server alive)', 'method' => 'GET', 'url' => $t1_url, 'resp' => $t1_resp, 'ms' => $t1_ms);
+  if (function_exists('langa_tools_client_debug_log_remote')) langa_tools_client_debug_log_remote('connectivity', 'GET', $t1_url, $t1_resp, $t1_ms);
+
+  if ($site_key && $secret) {
+    $t2_url = $server_base . '/wp-json/langa-tools-server/v1/license/check';
+    $t2_payload_arr = array('site_url' => home_url(), 'ts' => time(), 'nonce' => wp_generate_password(12, false, false));
+    $t2_payload = wp_json_encode($t2_payload_arr);
+    $t2_sig = class_exists('Langa_Tools_Client_Auth') ? Langa_Tools_Client_Auth::sign($t2_payload, $secret) : '';
+    $t2_start = microtime(true);
+    $t2_resp = wp_remote_post($t2_url, array('timeout' => 12, 'body' => array('site_key' => $site_key, 'payload' => $t2_payload, 'signature' => $t2_sig)));
+    $t2_ms = round((microtime(true) - $t2_start) * 1000);
+    $tests[] = array('label' => 'License check (auth)', 'method' => 'POST', 'url' => $t2_url, 'resp' => $t2_resp, 'ms' => $t2_ms);
+    if (function_exists('langa_tools_client_debug_log_remote')) langa_tools_client_debug_log_remote('license', 'POST', $t2_url, $t2_resp, $t2_ms);
+  }
+
+  if ($site_key && $secret) {
+    $t3_url = $server_base . '/wp-json/langa-tools-server/v1/events/log-event';
+    $t3_payload_arr = array('site_url' => home_url(), 'mode' => 'test', 'event_type' => 'connectivity_test', 'ref' => 'debug_tab', 'ts' => time(), 'nonce' => wp_generate_password(12, false, false));
+    $t3_payload = wp_json_encode($t3_payload_arr);
+    $t3_sig = class_exists('Langa_Tools_Client_Auth') ? Langa_Tools_Client_Auth::sign($t3_payload, $secret) : '';
+    $t3_start = microtime(true);
+    $t3_resp = wp_remote_post($t3_url, array('timeout' => 12, 'body' => array('site_key' => $site_key, 'payload' => $t3_payload, 'signature' => $t3_sig)));
+    $t3_ms = round((microtime(true) - $t3_start) * 1000);
+    $tests[] = array('label' => 'Event POST (test)', 'method' => 'POST', 'url' => $t3_url, 'resp' => $t3_resp, 'ms' => $t3_ms);
+    if (function_exists('langa_tools_client_debug_log_remote')) langa_tools_client_debug_log_remote('connectivity', 'POST', $t3_url, $t3_resp, $t3_ms);
+  } else {
+    // No credentials — skip event test, show info row
+    $tests[] = array('label' => 'Event POST (test)', 'method' => 'POST', 'url' => $server_base . '/wp-json/langa-tools-server/v1/events/log-event', 'resp' => null, 'ms' => 0, 'skip' => 'No license key — requires PRO activation');
+  }
+
+  echo '<div class="langa-scroll-table langa-scroll-table--short">';
+  echo '<table style="border:0;margin:0;max-width:none;width:100%;font-size:12px">';
+  echo '<thead><tr><th style="width:200px">Test</th><th style="width:60px">Method</th><th style="width:60px">HTTP</th><th style="width:60px">Latency</th><th>Result</th></tr></thead><tbody>';
+
+  foreach ($tests as $t) {
+    // Skip row — no credentials or not applicable
+    if (!empty($t['skip'])) {
+      echo '<tr style="opacity:0.5">';
+      echo '<td><span class="langa-badge" style="background:#e5e7eb;color:#6b7280">SKIP</span> <strong>' . esc_html($t['label']) . '</strong></td>';
+      echo '<td><code>' . esc_html($t['method']) . '</code></td>';
+      echo '<td><code>—</code></td>';
+      echo '<td>—</td>';
+      echo '<td><span style="color:#6b7280;font-size:11px">' . esc_html($t['skip']) . '</span></td>';
+      echo '</tr>';
+      continue;
+    }
+    $resp_obj = $t['resp'];
+    $is_err = is_wp_error($resp_obj);
+    $code = $is_err ? 0 : (int) wp_remote_retrieve_response_code($resp_obj);
+    $t_ok = (!$is_err && $code >= 200 && $code < 300);
+    $body_raw = $is_err ? '' : (string) wp_remote_retrieve_body($resp_obj);
+    $body_trim = mb_strlen($body_raw) > 300 ? mb_substr($body_raw, 0, 300) . '...' : $body_raw;
+    $err_msg = $is_err ? $resp_obj->get_error_message() : '';
+    $warn = false;
+    if (!$is_err && !$t_ok && $body_raw !== '') {
+      $bj = json_decode($body_raw, true);
+      if (is_array($bj) && isset($bj['error']) && in_array($bj['error'], array('events_gateway_disabled','events_disabled','gateway_disabled','maintenance'), true)) $warn = true;
+    }
+    if ($warn)     $icon = '<span class="langa-badge langa-badge--warn">WARN</span>';
+    elseif ($t_ok) $icon = '<span class="langa-badge langa-badge--ok">OK</span>';
+    else           $icon = '<span class="langa-badge langa-badge--fail">FAIL</span>';
+    echo '<tr>';
+    echo '<td>' . $icon . ' <strong>' . esc_html($t['label']) . '</strong></td>';
+    echo '<td><code>' . esc_html($t['method']) . '</code></td>';
+    echo '<td><code>' . ($is_err ? '—' : esc_html($code)) . '</code></td>';
+    echo '<td>' . esc_html($t['ms']) . ' ms</td>';
+    echo '<td>';
+    if ($is_err) echo '<span style="color:#b71c1c">' . esc_html($err_msg) . '</span>';
+    elseif ($body_trim !== '') echo '<pre style="white-space:pre-wrap;word-break:break-all;margin:0;font-size:11px;max-width:400px">' . esc_html($body_trim) . '</pre>';
+    else echo '<span class="description">(empty)</span>';
+    echo '</td></tr>';
+  }
+
+  if (!$site_key || !$secret) {
+    echo '<tr><td colspan="5" style="padding:10px 14px"><span class="description">Enter Site Key + Secret in General tab to enable authenticated tests.</span></td></tr>';
+  }
+  echo '</tbody></table></div>';
+
+  $lic_last = function_exists('langa_tools_client_license_last') ? langa_tools_client_license_last() : array();
+  if (!empty($lic_last)) {
+    echo '<details style="margin:10px 0 0"><summary style="cursor:pointer;font-size:12px;color:#86868b">License raw response</summary>';
+    echo '<pre style="font-size:11px;background:#fafafa;padding:10px;border-radius:8px;border:1px solid #e5e5e7;margin:6px 0 0;max-height:200px;overflow:auto;word-break:break-all">' . esc_html(wp_json_encode($lic_last, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) . '</pre>';
+    echo '</details>';
+  }
+  echo '</div>'; // connectivity card
 
   // Event Log
   echo '<div class="langa-card">';
@@ -1367,17 +1659,17 @@ function langa_tools_client_settings_tab_debug() {
     }
     echo '</tbody></table></div>';
     // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- admin inline JS for immediate DOM manipulation
-    $_ijs='';
-    $_ijs.='document.getElementById("langa-debug-copy").addEventListener("click",function(){';
-    $_ijs.='var t=document.getElementById("langa-debug-table");if(!t)return;';
-    $_ijs.='var rows=t.querySelectorAll("tbody tr"),lines=[];';
-    $_ijs.='rows.forEach(function(r){var cells=r.querySelectorAll("td");if(cells.length>=7){';
-    $_ijs.='lines.push([].map.call(cells,function(c){return c.textContent.trim()}).join(" | "));}});';
-    $_ijs.='var txt="LANGA Debug Log ("+lines.length+" entries)\\n"+("=".repeat(60))+"\\n"+lines.join("\\n");';
-    $_ijs.='if(navigator.clipboard){navigator.clipboard.writeText(txt).then(function(){';
-    $_ijs.='var ok=document.getElementById("langa-debug-copy-ok");ok.style.display="inline";setTimeout(function(){ok.style.display="none"},2000);';
-    $_ijs.='});}});';
-    wp_print_inline_script_tag($_ijs);
+    echo '<script>';
+    echo 'document.getElementById("langa-debug-copy").addEventListener("click",function(){';
+    echo 'var t=document.getElementById("langa-debug-table");if(!t)return;';
+    echo 'var rows=t.querySelectorAll("tbody tr"),lines=[];';
+    echo 'rows.forEach(function(r){var cells=r.querySelectorAll("td");if(cells.length>=7){';
+    echo 'lines.push([].map.call(cells,function(c){return c.textContent.trim()}).join(" | "));}});';
+    echo 'var txt="LANGA Debug Log ("+lines.length+" entries)\\n"+("=".repeat(60))+"\\n"+lines.join("\\n");';
+    echo 'if(navigator.clipboard){navigator.clipboard.writeText(txt).then(function(){';
+    echo 'var ok=document.getElementById("langa-debug-copy-ok");ok.style.display="inline";setTimeout(function(){ok.style.display="none"},2000);';
+    echo '});}});';
+    echo '</script>';
   }
   echo '</div>'; // log card
   echo '</div>'; // left col
@@ -1428,10 +1720,167 @@ function langa_tools_client_settings_tab_debug() {
   echo '</form>';
   echo '</div>';
 
+  // ── 🔗 LANGA Sync — always-on for free tier ──
+  $state_lite = 'unknown';
+  $bs_lite = array('registration_status'=>'','last_heartbeat'=>0,'using_fallback'=>0,'registration_error'=>'');
+  if (function_exists('langa_bridge_get_status')) {
+    $bs_lite = langa_bridge_get_status();
+    $registered_l  = ($bs_lite['registration_status'] === 'registered');
+    $on_fallback_l = !empty($bs_lite['using_fallback']);
+    $has_hb_l      = $bs_lite['last_heartbeat'] > 0;
+    $hb_fresh_l    = $has_hb_l && (time() - $bs_lite['last_heartbeat']) < 43200;
+    if      ($registered_l && $hb_fresh_l && !$on_fallback_l) $state_lite = 'primary';
+    elseif  ($registered_l && $on_fallback_l)                 $state_lite = 'fallback';
+    elseif  ($registered_l && !$hb_fresh_l)                   $state_lite = 'overdue';
+    else                                                       $state_lite = 'disconnected';
+  }
+  $state_map_l = array(
+    'primary'      => array('dot'=>'#16a34a','bg'=>'#f0fdf4','txt'=>'#15803d','border'=>'#bbf7d0','label'=>'Connected',           'sub'=>'Microchip connesso ad AEGIS'),
+    'fallback'     => array('dot'=>'#16a34a','bg'=>'#f0fdf4','txt'=>'#15803d','border'=>'#bbf7d0','label'=>'Connected','sub'=>'Microchip connesso ad AEGIS'),
+    'overdue'      => array('dot'=>'#ea580c','bg'=>'#fff7ed','txt'=>'#c2410c','border'=>'#fed7aa','label'=>'Connection delayed',  'sub'=>'Registered, but no recent heartbeat'),
+    'disconnected' => array('dot'=>'#dc2626','bg'=>'#fef2f2','txt'=>'#b91c1c','border'=>'#fecaca','label'=>'Not connected',       'sub'=>'Registration pending or failed'),
+    'unknown'      => array('dot'=>'#64748b','bg'=>'#f8fafc','txt'=>'#475569','border'=>'#e2e8f0','label'=>'Unknown',             'sub'=>'Status not available'),
+  );
+  $svl = $state_map_l[$state_lite] ?? $state_map_l['unknown'];
+
+  echo '<style>
+#langa-sync-box .langa-sync-badge{display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;margin:0 0 10px!important;}
+#langa-sync-box .langa-sync-badge-dot{display:inline-block!important;width:12px!important;height:12px!important;border-radius:50%!important;flex-shrink:0!important;}
+#langa-sync-box .langa-sync-badge-label{font-size:13px!important;font-weight:700!important;margin:0!important;line-height:1.3!important;}
+#langa-sync-box .langa-sync-badge-sub{font-size:11px!important;opacity:.85!important;margin:2px 0 0!important;}
+#langa-sync-box .langa-sync-notice{display:block!important;margin:8px 0 0!important;padding:8px 10px 8px 14px!important;border-left:4px solid!important;border-radius:0 6px 6px 0!important;font-size:11px!important;font-weight:600!important;line-height:1.4!important;}
+</style>';
+  echo '<div id="langa-sync-box" class="langa-card" style="border-left:3px solid '.esc_attr($svl['dot']).'">';
+  echo '<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px">';
+  echo '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c1121f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>';
+  echo '<div><div style="font-size:12px;font-weight:700;color:#c1121f">Microchip <span style="font-weight:400;font-size:10px;color:#6b7280">(Sync)</span></div><div style="font-size:9px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px">powered by AEGIS</div></div>';
+  echo '</div>';
+
+  // Big status badge
+  echo '<div class="langa-sync-badge" style="background:'.esc_attr($svl['bg']).';border:1px solid '.esc_attr($svl['border']).'">';
+    echo '<span id="langa-sync-dot" class="langa-sync-badge-dot" style="background:'.esc_attr($svl['dot']).'"></span>';
+    echo '<div>';
+      echo '<div id="langa-sync-label" class="langa-sync-badge-label" style="color:'.esc_attr($svl['txt']).'">'.esc_html($svl['label']).'</div>';
+      echo '<div id="langa-sync-sub" class="langa-sync-badge-sub" style="color:'.esc_attr($svl['txt']).'">'.esc_html($svl['sub']).'</div>';
+    echo '</div>';
+  echo '</div>';
+
+  if (function_exists('langa_bridge_get_status')) {
+    $hb_l = ($bs_lite['last_heartbeat'] > 0) ? 'Last heartbeat: ' . human_time_diff((int)$bs_lite['last_heartbeat'], time()) . ' ago' : 'No heartbeat yet';
+    echo '<div style="font-size:11px;color:#86868b;margin:0 0 8px">'.esc_html($hb_l).'</div>';
+  }
+
+  $test_nonce = wp_create_nonce('langa_bridge_test_conn');
+  echo '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 4px">';
+  echo '<button type="button" id="langa-sync-test-btn" class="button" style="font-size:11px;height:26px;padding:0 10px" data-nonce="'.esc_attr($test_nonce).'">Test Connection</button>';
+  if (!in_array($state_lite, array('primary'), true)) {
+    echo '<button type="button" id="langa-sync-force-btn" class="button button-primary" style="font-size:11px;height:26px;padding:0 10px" data-nonce="'.esc_attr($test_nonce).'">Force Sync Now</button>';
+  }
+  echo '</div>';
+
+
+    echo '<div class="langa-sync-notice" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe">&#128274; Microchip is always active — Lite version.</div>';
+
+  echo '<script>
+(function(){
+  var btn=document.getElementById("langa-sync-test-btn");
+  if(!btn)return;
+  btn.addEventListener("click",function(){
+    btn.disabled=true; btn.textContent="Testing\u2026";
+    var dot=document.getElementById("langa-sync-dot");
+    var lbl=document.getElementById("langa-sync-label");
+    var sub=document.getElementById("langa-sync-sub");
+    var fd=new FormData();
+    fd.append("action","langa_bridge_test_connection");
+    fd.append("_nonce","' . esc_js($test_nonce) . '");
+    fetch(ajaxurl,{method:"POST",body:fd})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        btn.disabled=false; btn.textContent="Test Connection";
+        var data=d.data||{}; var ep=data.endpoint||(d.success?"primary":"none");
+        var colors={primary:"#f0fdf4",fallback:"#f0fdf4",none:"#fef2f2"};
+        var borders={primary:"#bbf7d0",fallback:"#bbf7d0",none:"#fecaca"};
+        var txts={primary:"#15803d",fallback:"#15803d",none:"#b91c1c"};
+        var dots={primary:"#16a34a",fallback:"#16a34a",none:"#dc2626"};
+        var labels={primary:"Connected",fallback:"Connected",none:"Not connected"};
+        var subs={primary:"Microchip connesso ad AEGIS",fallback:"Microchip connesso ad AEGIS",none:"Both endpoints unreachable"};
+        if(dot)dot.style.background=dots[ep]||"#dc2626";
+        if(lbl){lbl.textContent=data.label||labels[ep]||"Unknown";lbl.style.color=txts[ep]||"#b91c1c";}
+        if(sub){sub.textContent=subs[ep]||"";sub.style.color=txts[ep]||"#b91c1c";}
+        var badge=dot?dot.parentNode.parentNode:null;
+        if(badge){badge.style.background=colors[ep]||"#fef2f2";badge.style.borderColor=borders[ep]||"#fecaca";}
+        setTimeout(function(){location.reload();},1200);
+      })
+      .catch(function(e){
+        btn.disabled=false; btn.textContent="Test Connection";
+        if(dot)dot.style.background="#dc2626";
+        if(lbl){lbl.textContent="Not connected";lbl.style.color="#b91c1c";}
+        setTimeout(function(){location.reload();},1500);
+      });
+  });
+})();
+</script>';
+
+  echo '<script>
+(function(){
+  var btn=document.getElementById("langa-sync-force-btn");
+  if(!btn)return;
+  btn.addEventListener("click",function(){
+    btn.disabled=true; btn.textContent="Registering\u2026";
+    var dot=document.getElementById("langa-sync-dot");
+    var lbl=document.getElementById("langa-sync-label");
+    var sub=document.getElementById("langa-sync-sub");
+    var badge=dot?dot.parentNode.parentNode:null;
+    var fd=new FormData();
+    fd.append("action","langa_bridge_force_register");
+    fd.append("_nonce","' . esc_js($test_nonce) . '");
+    fetch(ajaxurl,{method:"POST",body:fd})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        btn.disabled=false; btn.textContent="Force Sync Now";
+        var data=d.data||{};
+        if(d.success){
+          var bg="#f0fdf4";
+          var bd="#bbf7d0";
+          var dot_c="#16a34a";
+          var txt="#15803d";
+          var lbl_t="Connected";
+          var sub_t="Microchip connesso ad AEGIS";
+          if(dot)dot.style.background=dot_c;
+          if(lbl){lbl.textContent=lbl_t;lbl.style.color=txt;}
+          if(sub){sub.textContent=sub_t;sub.style.color=txt;}
+          if(badge){badge.style.background=bg;badge.style.borderColor=bd;}
+        } else {
+          if(dot)dot.style.background="#dc2626";
+          if(lbl){lbl.textContent="Not connected";lbl.style.color="#b91c1c";}
+          if(sub){sub.textContent=data.msg||"Registration failed";sub.style.color="#b91c1c";}
+          if(badge){badge.style.background="#fef2f2";badge.style.borderColor="#fecaca";}
+        }
+        setTimeout(function(){location.reload();},1500);
+      })
+      .catch(function(e){
+        btn.disabled=false; btn.textContent="Force Sync Now";
+        if(dot)dot.style.background="#dc2626";
+        if(lbl){lbl.textContent="Not connected";lbl.style.color="#b91c1c";}
+        setTimeout(function(){location.reload();},1500);
+      });
+  });
+})();
+</script>';
+
+  echo '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;text-align:center;font-size:9px;color:#9ca3af;line-height:1.7">';
+  echo 'AEGIS Tech &copy; ' . date('Y') . ' LANGA Corp. Srl &middot; P.IVA IT10637600965<br>';
+  echo '<a href="https://aegis.langa.tv" target="_blank" style="color:#6a4c93;text-decoration:none;font-weight:600">aegis.langa.tv</a> &middot; <a href="https://langa.tv" target="_blank" style="color:#f37f0d;text-decoration:none;font-weight:600">lan.ga</a>';
+  echo '</div>';
+
+  echo '</div>';
+
+  echo '</div>';
 
   echo '</div>'; // right col
   echo '</div>'; // grid
 }
+
 
 function langa_tools_client_settings_tab_help() {
   $v = defined('LANGA_TOOLS_CLIENT_VERSION') ? LANGA_TOOLS_CLIENT_VERSION : '?';
@@ -1572,7 +2021,7 @@ function langa_tools_client_help_dev() {
   $fns = array(
     array('langa_tools_client_feature_is_enabled($key)', 'Check runtime: module ON + valid license.'),
     array('langa_tools_client_feature_is_config_enabled($key)', 'Config-only check (toggle). For admin UI.'),
-    array('langa_tools_client_license_is_valid($force)', 'Check license status (PRO only).'),
+    array('langa_tools_client_license_is_valid($force)', 'Verify license with transient cache.'),
     array('langa_tools_client_get_site_data($key, $default)', 'Reads centralized data (dot-notation: company.email).'),
     array('langa_tools_client_mail_send($args)', 'Send email with unified template (orange banner).'),
     array('langa_tools_client_debug_log($type, $msg, $extra)', 'Writes to debug log (if debug ON).'),
@@ -1782,7 +2231,7 @@ function langa_tools_client_settings_tab_test() {
       if ($ap > 0) echo '<path d="M 6 28 A 24 24 0 '.$ml2.' 1 '.round($mex2,1).' '.round($mey2,1).'" fill="none" stroke="'.esc_attr($mac).'" stroke-width="2.5" stroke-linecap="round" opacity=".4"/>';
       // Inner (relative)
       echo '<path d="M 12 28 A 18 18 0 0 1 48 28" fill="none" stroke="#e5e5e7" stroke-width="5" stroke-linecap="round"/>';
-      if ($s > 0) echo '<path d="M 12 28 A 18 18 0 '.(int)$ml1.' 1 '.round($mex1,1).' '.round($mey1,1).'" fill="none" stroke="'.esc_attr($mc).'" stroke-width="5" stroke-linecap="round"/>';
+      if ($s > 0) echo '<path d="M 12 28 A 18 18 0 '.$ml1.' 1 '.round($mex1,1).' '.round($mey1,1).'" fill="none" stroke="'.esc_attr($mc).'" stroke-width="5" stroke-linecap="round"/>';
       echo '<text x="30" y="27" text-anchor="middle" font-size="12" font-weight="700" fill="'.esc_attr($mc).'">'.$s.'</text>';
       echo '</svg>';
 
@@ -1790,7 +2239,7 @@ function langa_tools_client_settings_tab_test() {
       echo '<div style="text-align:center;min-width:0">';
       echo '<div style="display:inline-flex;align-items:center;gap:6px">';
       echo '<span class="dashicons '.esc_attr($meta['icon']).'" style="color:'.esc_attr($meta['color']).';font-size:16px;width:16px;height:16px"></span>';
-      echo '<span style="font-weight:600;font-size:14px;color:#1d1d1f">'.esc_html($meta['label']).'</span>';
+      echo '<span style="font-weight:600;font-size:14px;color:#1d1d1f">'.$meta['label'].'</span>';
       echo '</div>';
       echo '<div style="font-size:11px;color:#6e6e73;margin-top:2px">'.esc_html($data['label']);
       if ($ap !== $s) echo ' &middot; <span style="color:'.esc_attr($mac).'">'.$aon.'/'.$amax.' total ('.$ap.'%)</span>';

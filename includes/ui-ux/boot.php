@@ -47,7 +47,7 @@ function langa_tools_client_adminux_boot() {
   add_action('wp_head', 'langa_tools_client_output_favicon_override', 9999);
 
   if (is_admin()) {
-    // removed in Lite
+    langa_tools_client_adminux_load_user_switching();
 
     // Tools: Replace (Media Library row action + helpers)
     // These tools do not require a dedicated toggle: when AdminUX is enabled, they are available.

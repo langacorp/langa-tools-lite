@@ -188,7 +188,7 @@ function langa_tools_client_custom_login_styles() {
 
   wp_register_style('langa-custom-login', false, array(), '1.0');
   wp_enqueue_style('langa-custom-login');
-  wp_add_inline_style('langa-custom-login', wp_strip_all_tags($css));
+  wp_add_inline_style('langa-custom-login', $css);
 }
 
 /* ─── Filters ─── */

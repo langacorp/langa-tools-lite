@@ -20,7 +20,7 @@ function langa_tools_client_overview_page() {
   $is_welcome = isset($_GET['welcome']) && sanitize_key(wp_unslash($_GET['welcome'])) === '1';
   $wizard_dismissed = (int) get_option('langa_tools_wizard_dismissed', 0);
 
-  $license_valid = true; // Lite WP.org: no license required, all features free.
+  $license_valid = function_exists('langa_tools_client_license_is_valid') && langa_tools_client_license_is_valid();
   $dev_bypass    = langa_tools_client_dev_bypass_active();
   $license_real  = $license_valid; // true when valid license OR bypass
   // Lite ALWAYS shows upgrade CTA — never the "PRO ACTIVE" block
@@ -158,7 +158,7 @@ function langa_tools_client_overview_page() {
     .mc-pr-paid{background:#fef3c7;color:#c56200}.mc-pr-free{background:#f3f4f6;color:#6e6e73}
     .mc-a{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.mc-a .button{font-size:12px;border-radius:8px}
     .lo-plan{background:linear-gradient(135deg,#fefce8 0%,#fffbeb 100%);border:1px solid #fde68a;border-radius:14px;padding:22px 26px;margin-bottom:14px;position:relative;overflow:hidden}
-    
+    .lo-plan::after{content:\'PRO\';position:absolute;top:14px;right:16px;background:#f37f0d;color:#fff;font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;letter-spacing:.08em}
     .lo-plan h3{margin:0 0 4px;font-size:16px;font-weight:700;color:#c56200}
     .lo-plan .tagline{font-size:12.5px;color:#a16207;line-height:1.5;margin:0 0 14px}
     .lo-plan-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0 0 14px}@media(max-width:600px){.lo-plan-grid{grid-template-columns:1fr}}
@@ -219,11 +219,40 @@ function langa_tools_client_overview_page() {
     <div class="lo-row lo-8-4">
       <div>
 
-        <div class="lo-plan">
-          <h3>LANGA Tools Lite</h3>
-          <p class="tagline">Free edition. UI/UX module included.</p>
-          <p style="font-size:13px;color:#6e6e73;margin:8px 0 0">Want more? <a href="https://tools.langa.tv" target="_blank">LANGA Tools PRO</a></p>
+        <?php if ($license_real): ?>
+        <div class="lo-plan" style="background:linear-gradient(135deg,#f0fdf4 0%,#ecfdf5 100%);border-color:#bbf7d0;">
+          <div style="position:absolute;top:14px;right:16px;background:#22c55e;color:#fff;font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;letter-spacing:.08em">ACTIVE</div>
+          <h3 style="color:#166534">Tools PRO</h3>
+          <p class="tagline" style="color:#15803d">All modules unlocked. <?php echo (int)$active_count; ?>/<?php echo (int)$total_count; ?> modules enabled.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a href="https://account.langa.tv" target="_blank" style="display:inline-block;background:#166534;color:#fff;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:700;text-decoration:none">Manage subscription</a>
+            <a href="<?php echo esc_url($modules_url); ?>" style="display:inline-block;background:#fff;color:#166534;border:1px solid #bbf7d0;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:600;text-decoration:none">Module settings</a>
+          </div>
         </div>
+        <?php else: ?>
+        <div class="lo-plan">
+          <h3>Upgrade to Tools PRO</h3>
+          <p class="tagline">Unlock all modules, priority support and automatic updates. This is the Lite version &mdash; activate a PRO license to enable the full toolkit.</p>
+          <div class="lo-plan-grid">
+            <div class="lo-plan-col">
+              <div class="plan-label">Monthly</div>
+              <div class="plan-price">&euro;19.90<small>/mo</small></div>
+              <p class="plan-note">Cancel anytime. All modules included.</p>
+            </div>
+            <div class="lo-plan-col featured">
+              <div class="plan-label">Yearly <span style="color:#166534;font-weight:800">Save 17%</span></div>
+              <div class="plan-price">&euro;199<small>/yr</small></div>
+              <p class="plan-save">&#10003; Save &euro;39.80/year</p>
+              <p class="plan-note">Best value. All modules included.</p>
+            </div>
+          </div>
+          <p class="or-line">or pay per module</p>
+          <p class="permod">&euro;4.99<small>/module/month</small></p>
+          <p class="permod-note">Pick only the modules you need. Events module is always free.</p>
+          <div class="cta-row"><a href="https://tools.langa.tv/#pricing" target="_blank" class="cta">Get PRO License &rarr;</a></div>
+          <p class="lo-lite-note">Currently running <b>Tools Lite</b> (free). PRO modules are locked until a license is activated.</p>
+        </div>
+        <?php endif; ?>
 
         <?php
         // ── Smart Setup state (display-only params, no state change) ──
@@ -255,17 +284,17 @@ function langa_tools_client_overview_page() {
           <?php endif; ?>
 
           <ul class="lo-steps">
-            <!-- Step 1: Setup -->
+            <!-- Step 1: License -->
             <li>
-              <div class="lo-ic ic-ok">&#10003;</div>
-              <div><div class="sl">LANGA Tools Lite</div><div class="sd">Free edition active. UI/UX module included.</div>
-                <div class="sa"><span class="ok">&#10003; Active</span></div>
+              <div class="lo-ic <?php echo $step_license ? 'ic-ok' : 'ic-no'; ?>"><?php echo $step_license ? '&#10003;' : '1'; ?></div>
+              <div><div class="sl">Connect PRO License</div><div class="sd">Enter your Site Key and Secret from your account</div>
+                <div class="sa"><?php echo $step_license ? '<span class="ok">&#10003; Active</span>' : '<a href="'.esc_url($general_url).'">Configure &rarr;</a>'; ?></div>
               </div>
             </li>
 
             <!-- Step 2: Company data -->
             <li>
-              <div class="lo-ic <?php echo esc_attr($step_data ? 'ic-ok' : 'ic-no'); ?>"><?php echo $step_data ? '&#10003;' : '2'; ?></div>
+              <div class="lo-ic <?php echo $step_data ? 'ic-ok' : 'ic-no'; ?>"><?php echo $step_data ? '&#10003;' : '2'; ?></div>
               <div><div class="sl">Company data</div><div class="sd">Legal name, VAT, address — used by Legal, BC, Forms, SEO.</div>
                 <div class="sa"><?php echo $step_data ? '<span class="ok">&#10003; Done</span>' : '<a href="'.esc_url($data_url).'">Enter data &rarr;</a>'; ?></div>
               </div>
@@ -273,7 +302,7 @@ function langa_tools_client_overview_page() {
 
             <!-- Step 3: Smart Setup (integrated) -->
             <li style="<?php echo (!$step_smart) ? 'background:#fffbeb;border-radius:10px;padding:14px 12px;margin:-3px -4px' : ''; ?>">
-              <div class="lo-ic <?php echo esc_attr($step_smart ? 'ic-ok' : 'ic-no'); ?>"><?php echo $step_smart ? '&#10003;' : '3'; ?></div>
+              <div class="lo-ic <?php echo $step_smart ? 'ic-ok' : 'ic-no'; ?>"><?php echo $step_smart ? '&#10003;' : '3'; ?></div>
               <div style="flex:1;min-width:0">
                 <div class="sl">Smart Setup <?php if ($step_smart): ?><span style="font-size:11px;font-weight:600;color:#16a34a;background:#dcfce7;padding:1px 8px;border-radius:4px;margin-left:6px"><?php echo esc_html($ss_type_labels[$ss_saved_type] ?? $ss_saved_type); ?></span><?php endif; ?></div>
                 <div class="sd">
@@ -283,7 +312,7 @@ function langa_tools_client_overview_page() {
                   <div style="margin-top:4px;font-size:11px;color:#6e6e73">
                     Applied to: <?php echo esc_html(str_replace(',', ', ', get_option('langa_tools_smart_setup_applied', ''))); ?>.
                     <?php if (!$license_valid): ?>
-                    Settings saved.
+                    Settings saved — <a href="https://tools.langa.tv/#pricing" target="_blank" style="color:#166534;font-weight:600">activate PRO</a> to go live.
                     <?php endif; ?>
                   </div>
                   <?php endif; ?>
@@ -383,13 +412,31 @@ function langa_tools_client_overview_page() {
                 elseif ($step_modules) { $s4_class = 'ic-ok'; $s4_label = '&#10003;'; }
                 else { $s4_class = 'ic-no'; $s4_label = '4'; }
               ?>
-              <div class="lo-ic <?php echo esc_attr($s4_class); ?>"><?php echo $s4_label; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- HTML entity, no user input ?></div>
+              <div class="lo-ic <?php echo $s4_class; ?>"><?php echo $s4_label; ?></div>
               <div><div class="sl">Enable modules</div>
                 <div class="sd"><?php
-                  echo (int)$active_count . ' module' . ($active_count !== 1 ? 's' : '') . ' running.';
+                  if (!$step_license && $has_free_module) {
+                    echo (int)$active_count . ' free module running (Events). Get PRO to unlock all modules.';
+                  } elseif (!$step_license) {
+                    echo 'Requires valid license. Activate your PRO license first.';
+                  } elseif ($step_modules) {
+                    echo (int)$active_count . ' module' . ($active_count !== 1 ? 's' : '') . ' running.';
+                    if ($step_smart) echo ' Settings are pre-configured by Smart Setup.';
+                  } else {
+                    echo 'Choose the modules you need. ';
+                    if ($step_smart) echo 'Settings are pre-configured by Smart Setup — just enable and go.';
+                  }
                 ?></div>
                 <div class="sa"><?php
-                  echo '<span class="ok">&#10003; '.(int)$active_count.' active</span>';
+                  if (!$step_license && $has_free_module) {
+                    echo '<span class="ok">&#10003; Events (free)</span>';
+                  } elseif (!$step_license) {
+                    echo '<span style="color:#9ca3af;font-size:12.5px;">&#128274; Locked — license required</span>';
+                  } elseif ($step_modules) {
+                    echo '<span class="ok">&#10003; '.(int)$active_count.' active</span>';
+                  } else {
+                    echo '<a href="'.esc_url($modules_url).'">Enable &rarr;</a>';
+                  }
                 ?></div>
               </div>
             </li>
@@ -399,6 +446,23 @@ function langa_tools_client_overview_page() {
           <div style="text-align:right;margin-top:8px"><a href="<?php echo esc_url($dismiss_url); ?>" style="font-size:12px;color:#86868b;text-decoration:none">Dismiss setup &times;</a></div>
           <?php endif; ?>
         </div>
+
+        <?php if (!$license_valid && $step_smart): ?>
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px">
+          <span style="font-size:22px;line-height:1;flex-shrink:0">&#128274;</span>
+          <div>
+            <h3 style="margin:0 0 2px;font-size:14px;color:#c56200">Settings ready — just activate</h3>
+            <p style="margin:0 0 8px;font-size:13px;color:#a16207;line-height:1.5">
+              Smart Setup has configured optimal settings for your <strong><?php echo esc_html($ss_type_labels[$ss_saved_type] ?? ''); ?></strong> site.
+              Activate a PRO license and everything works immediately — zero extra configuration needed.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a href="https://tools.langa.tv/#pricing" target="_blank" style="display:inline-block;background:#1d1d1f;color:#fff;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:700;text-decoration:none">View PRO plans &rarr;</a>
+              <a href="<?php echo esc_url($general_url); ?>" style="display:inline-block;background:#fff;color:#1d1d1f;border:1px solid #e5e5e7;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:600;text-decoration:none">I have a license key</a>
+            </div>
+          </div>
+        </div>
+        <?php endif; ?>
 
         <div class="lo-card" id="langa-overview-modules">
           <h2>Modules <span style="font-size:12px;font-weight:400;color:#86868b">(<?php echo (int)$active_count; ?>/<?php echo (int)$total_count; ?>)</span></h2>
@@ -414,7 +478,7 @@ function langa_tools_client_overview_page() {
               $mu = admin_url('admin.php?page=' . langa_tools_client_page_slug($key));
               $price = isset($mod_price[$key]) ? $mod_price[$key] : 4.99;
             ?>
-            <div class="lo-mc<?php echo esc_attr($is_on ? ' on' : ''); ?>">
+            <div class="lo-mc<?php echo $is_on ? ' on' : ''; ?>">
               <div class="lo-mc-h" role="button" tabindex="0" aria-expanded="false">
                 <span class="dashicons <?php echo esc_attr($m['icon']); ?> lo-mc-i"></span>
                 <div class="lo-mc-n">
@@ -427,10 +491,14 @@ function langa_tools_client_overview_page() {
                     <?php endif; ?>
                   </div>
                   <div class="mc-s">
-                    <?php if ($is_on): ?>
+                    <?php if ($is_free && $is_cfg): ?>
                       <span class="mc-d mc-d1"></span>Active
+                    <?php elseif (!$license_valid && $is_cfg): ?>
+                      <span class="mc-d mc-dx"></span><span style="color:#b71c1c">Locked</span>
+                    <?php elseif (!$license_valid): ?>
+                      <span class="mc-d mc-d0"></span>OFF <span style="color:#9ca3af">&middot; PRO required</span>
                     <?php else: ?>
-                      <span class="mc-d mc-d0"></span>OFF
+                      <span class="mc-d <?php echo $is_on?'mc-d1':'mc-d0'; ?>"></span><?php echo $is_on?'Active':'OFF'; ?>
                     <?php endif; ?>
                   </div>
                 </div>
@@ -440,8 +508,14 @@ function langa_tools_client_overview_page() {
                 <p class="mc-t"><?php echo esc_html($m['tag']); ?></p>
                 <?php if (!empty($m['hint'])): ?><div class="mc-hi"><?php echo esc_html($m['hint']); ?></div><?php endif; ?>
                 <div class="mc-a">
-                  <?php if ($is_on): ?>
+                  <?php if ($is_free && $is_on): ?>
                     <a href="<?php echo esc_url($mu); ?>" class="button button-primary">Go to module &rarr;</a>
+                  <?php elseif (!$license_valid && !$is_free): ?>
+                    <a href="<?php echo esc_url($general_url); ?>" class="button" style="color:#b71c1c;border-color:#fca5a5">Verify license</a>
+                  <?php elseif ($is_on): ?>
+                    <a href="<?php echo esc_url($mu); ?>" class="button button-primary">Go to module &rarr;</a>
+                  <?php else: ?>
+                    <a href="<?php echo esc_url($modules_url); ?>" class="button">Enable &rarr;</a>
                   <?php endif; ?>
                 </div>
               </div></div>
@@ -455,10 +529,21 @@ function langa_tools_client_overview_page() {
         <div class="lo-side" style="margin-bottom:10px">
           <h3>Status</h3>
           <ul>
-            <li>License <span class="lo-b lo-b-ok">LITE</span></li>
-            <li>Modules <strong><?php echo (int)$active_count.'/'.(int)$total_count; ?></strong></li>
+            <li>License <?php
+              $is_banned_flag = (int) get_option('langa_tools_banned', 0);
+              if ($is_banned_flag) {
+                echo '<span class="lo-b" style="background:#b71c1c;color:#fff">BANNED</span>';
+              } else {
+                echo '<span class="lo-b lo-b-w">LIMITED</span>';
+              }
+            ?></li>
+            <li>Modules <strong><?php echo (int)$active_count.'/'.(int)$total_count; ?></strong><?php
+              if (!$license_valid && $config_has_modules) echo ' <span class="lo-b lo-b-w">PRO LOCKED</span>';
+              elseif (!$license_valid && $has_free_module) echo ' <span class="lo-b lo-b-ok">FREE</span>';
+            ?></li>
             <li>SMTP <?php echo $smtp_ok ? '<span class="lo-b lo-b-ok">OK</span>' : '<span class="lo-b lo-b-w">Setup needed</span>'; ?></li>
             <li>Company data <?php echo $has_site_data ? '<span class="lo-b lo-b-ok">OK</span>' : '<span class="lo-b lo-b-w">Missing</span>'; ?></li>
+          </ul>
         </div>
         <?php
         // ── Site Health mini widget ──
@@ -519,9 +604,9 @@ function langa_tools_client_overview_page() {
           <?php if ($haavg !== $havg): ?>
           <div style="font-size:11px;color:<?php echo esc_attr($hacol); ?>;font-weight:600;margin:0 0 2px"><?php echo $haavg; ?>/100 total potential</div>
           <?php endif; ?>
-          <div style="font-size:10px;color:#6e6e73;margin:0 0 2px"><?php echo (int)$hc; ?>/<?php echo (int)$htotal_mods; ?> modules active</div>
+          <div style="font-size:10px;color:#6e6e73;margin:0 0 2px"><?php echo $hc; ?>/<?php echo $htotal_mods; ?> modules active</div>
           <?php if ($hinactive > 0): ?>
-          <div style="font-size:10px;color:#f37f0d;margin:0 0 6px">+<?php echo (int)$hinactive; ?> inactive</div>
+          <div style="font-size:10px;color:#f37f0d;margin:0 0 6px">+<?php echo $hinactive; ?> inactive</div>
           <?php else: ?>
           <div style="margin:0 0 6px"></div>
           <?php endif; ?>
@@ -541,6 +626,59 @@ function langa_tools_client_overview_page() {
             </li>
           </ul>
         </div>
+        <?php $show_pricing_sidebar = $license_real || (defined('LANGA_TOOLS_IS_LITE') && LANGA_TOOLS_IS_LITE); ?>
+        <?php if ($show_pricing_sidebar): ?>
+        <div id="langa-pricing-sidebar" style="background:#fffbeb;border:1px solid #fbbf24;border-radius:12px;padding:16px 18px;font-size:12px;margin-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 10px;">
+            <div style="font-weight:700;font-size:13px;color:#1d1d1f">Plans</div>
+            <div style="display:flex;background:#e5e5e7;border-radius:6px;overflow:hidden;font-size:11px;font-weight:600;cursor:pointer;" id="langa-plan-toggle">
+              <span data-plan="monthly" style="padding:3px 10px;background:#1d1d1f;color:#fff;border-radius:6px;transition:all .2s">Monthly</span>
+              <span data-plan="yearly" style="padding:3px 10px;color:#6e6e73;border-radius:6px;transition:all .2s">Yearly</span>
+            </div>
+          </div>
+          <div id="langa-plan-monthly">
+            <div style="text-align:center;background:#fff;border:1px solid #e5e5e7;border-radius:8px;padding:10px 8px;margin:0 0 8px;">
+              <div style="font-size:11px;color:#86868b">All modules</div>
+              <div style="font-size:20px;font-weight:800;color:#1d1d1f">&euro;19.90<small style="font-size:12px;font-weight:400;color:#86868b">/mo</small></div>
+            </div>
+            <div style="text-align:center;background:#fff;border:1px solid #e5e5e7;border-radius:8px;padding:8px;margin:0 0 8px;">
+              <div style="font-size:11px;color:#86868b">Per module</div>
+              <div style="font-size:16px;font-weight:700;color:#1d1d1f">&euro;4.99<small style="font-size:11px;font-weight:400;color:#86868b">/mo</small></div>
+            </div>
+          </div>
+          <div id="langa-plan-yearly" style="display:none">
+            <div style="text-align:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 8px;margin:0 0 8px;">
+              <div style="font-size:11px;color:#166534;font-weight:600">All modules &middot; Save 17%</div>
+              <div style="font-size:20px;font-weight:800;color:#166534">&euro;199<small style="font-size:12px;font-weight:400;color:#15803d">/yr</small></div>
+            </div>
+            <div style="text-align:center;background:#fff;border:1px solid #e5e5e7;border-radius:8px;padding:8px;margin:0 0 8px;">
+              <div style="font-size:11px;color:#86868b">Per module</div>
+              <div style="font-size:16px;font-weight:700;color:#1d1d1f">&euro;49.90<small style="font-size:11px;font-weight:400;color:#86868b">/yr</small></div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#86868b;text-align:center;margin:4px 0 0">Events module is always free</div>
+          <a href="https://tools.langa.tv/#pricing" target="_blank" style="display:block;text-align:center;margin:8px 0 0;font-size:12px;font-weight:600;color:#c56200;text-decoration:none">View pricing &rarr;</a>
+        </div>
+<?php langtoli_inline_script('(function(){
+          var tog=document.getElementById(\'langa-plan-toggle\');
+          if(!tog)return;
+          tog.addEventListener(\'click\',function(e){
+            var t=e.target.closest(\'[data-plan]\');
+            if(!t)return;
+            var plan=t.getAttribute(\'data-plan\');
+            var spans=tog.querySelectorAll(\'span\');
+            spans.forEach(function(s){
+              if(s.getAttribute(\'data-plan\')===plan){
+                s.style.background=\'#1d1d1f\';s.style.color=\'#fff\';
+              }else{
+                s.style.background=\'transparent\';s.style.color=\'#6e6e73\';
+              }
+            });
+            document.getElementById(\'langa-plan-monthly\').style.display=plan===\'monthly\'?\'block\':\'none\';
+            document.getElementById(\'langa-plan-yearly\').style.display=plan===\'yearly\'?\'block\':\'none\';
+          });
+        })();'); ?>
+        <?php endif; ?>
       </div>
     </div>
   </div>
@@ -585,7 +723,108 @@ function langa_tools_client_handle_smart_setup() {
     exit;
   }
 
-  $applied = array('UI/UX');
+  $applied = array();
+
+  // ── 1. Cache Pack ──
+  $cache_map = array('blog'=>'blog','ecommerce'=>'ecommerce','corporate'=>'corporate');
+  $cache_pack = $cache_map[$site_type];
+  $cache_defs = array(
+    'blog'       => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>4),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>0),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+    'ecommerce'  => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>1),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>0),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+    'corporate'  => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>8),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>1),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+  );
+  $co = get_option('langa_tools_cache_settings', array());
+  if (!is_array($co)) $co = array();
+  foreach (array('cache','file','media','preload','advanced') as $sk) {
+    if (!isset($co[$sk]) || !is_array($co[$sk])) $co[$sk] = array();
+  }
+  if (isset($cache_defs[$cache_pack])) {
+    foreach ($cache_defs[$cache_pack] as $sec => $vals) {
+      foreach ($vals as $k => $v) $co[$sec][$k] = $v;
+    }
+    $co['pack'] = $cache_pack;
+    update_option('langa_tools_cache_settings', $co);
+    $applied[] = 'Cache';
+  }
+
+  // ── 2. SEO Pack ──
+  $seo_map = array('blog'=>'light','ecommerce'=>'turbo','corporate'=>'standard');
+  $seo_mode = $seo_map[$site_type];
+  $seo = get_option('langa_tools_seo_settings', array());
+  if (!is_array($seo)) $seo = array();
+  if (!isset($seo['features']) || !is_array($seo['features'])) $seo['features'] = array();
+  if (!isset($seo['content']) || !is_array($seo['content'])) $seo['content'] = array();
+  if (!isset($seo['turbo']) || !is_array($seo['turbo'])) $seo['turbo'] = array();
+  if (!isset($seo['sitemap']) || !is_array($seo['sitemap'])) $seo['sitemap'] = array();
+
+  $feature_keys = array('xml_sitemap','robots_controls','titles_meta','opengraph','twitter_cards','canonical','schema','metabox','breadcrumbs','redirect_404_home','indexnow');
+  $seo_presets = array(
+    'light'    => array('xml_sitemap'=>1,'robots_controls'=>1,'titles_meta'=>1,'canonical'=>1,'schema'=>1,'breadcrumbs'=>1,'opengraph'=>0,'twitter_cards'=>0,'metabox'=>0,'redirect_404_home'=>0,'indexnow'=>0),
+    'standard' => array('xml_sitemap'=>1,'robots_controls'=>1,'titles_meta'=>1,'canonical'=>1,'schema'=>1,'breadcrumbs'=>1,'opengraph'=>1,'twitter_cards'=>1,'metabox'=>1,'redirect_404_home'=>0,'indexnow'=>0),
+    'turbo'    => array('xml_sitemap'=>1,'robots_controls'=>1,'titles_meta'=>1,'canonical'=>1,'schema'=>1,'breadcrumbs'=>1,'opengraph'=>1,'twitter_cards'=>1,'metabox'=>1,'redirect_404_home'=>1,'indexnow'=>1),
+  );
+  if (isset($seo_presets[$seo_mode])) {
+    $seo['mode'] = $seo_mode;
+    foreach ($feature_keys as $fk) {
+      $seo['features'][$fk] = !empty($seo_presets[$seo_mode][$fk]) ? 1 : 0;
+    }
+    $seo['content'] = array('index_posts'=>1,'index_pages'=>1,'index_products'=>1,'index_media'=>0);
+    $seo['turbo'] = array('safe'=>1,'aggressive_noindex'=>0,'force_output'=>0);
+    update_option('langa_tools_seo_settings', $seo);
+    $applied[] = 'SEO';
+  }
+
+  // ── 3. Safer Pack ──
+  $safer_map = array('blog'=>'basic','ecommerce'=>'business','corporate'=>'business');
+  $safer_pk = $safer_map[$site_type];
+  $safer_packs = array(
+    'basic'    => array('hide_wp_version'=>1,'hide_wp_fingerprints'=>1,'disable_xmlrpc'=>1,'block_author_enum'=>1,'disable_file_editor'=>0,'force_https_admin'=>0,'disable_rest_guests'=>0,'htaccess_hardening'=>0,'door_only_access'=>0,'protezione_2_0'=>0),
+    'business' => array('hide_wp_version'=>1,'hide_wp_fingerprints'=>1,'disable_xmlrpc'=>1,'block_author_enum'=>1,'disable_file_editor'=>1,'force_https_admin'=>1,'disable_rest_guests'=>0,'htaccess_hardening'=>0,'door_only_access'=>0,'protezione_2_0'=>0),
+  );
+  $so = get_option('langa_tools_safer_settings', array());
+  if (!is_array($so)) $so = array();
+  if (isset($safer_packs[$safer_pk])) {
+    foreach ($safer_packs[$safer_pk] as $k => $v) $so[$k] = $v;
+    $so['pack'] = $safer_pk;
+    // Safety: if htaccess enabled, write rewrite rules
+    if (!empty($so['htaccess_hardening']) && function_exists('langa_tools_client_safer_refresh_plugin_map')) {
+      langa_tools_client_safer_refresh_plugin_map();
+    }
+    update_option('langa_tools_safer_settings', $so);
+    if (function_exists('langa_tools_client_safer_update_root_htaccess')) {
+      langa_tools_client_safer_update_root_htaccess(!empty($so['htaccess_hardening']));
+    }
+    $applied[] = 'Safer';
+  }
+
+  // ── 4. Legal Pack ──
+  $legal_map = array('blog'=>'vetrina','ecommerce'=>'ecommerce','corporate'=>'servizi');
+  $legal_type = $legal_map[$site_type];
+  $lo = get_option('langa_tools_legal_settings', array());
+  if (!is_array($lo)) $lo = array();
+  $lo['site_type']        = $legal_type;
+  $lo['terms_enabled']    = in_array($legal_type, array('servizi','ecommerce'), true) ? 1 : 0;
+  $lo['impressum_enabled']= ($legal_type === 'ecommerce') ? 1 : 0;
+  // Reset content so ensure_pages generates GDPR defaults
+  foreach (array('privacy_content','cookie_content','terms_content','impressum_content') as $ck) {
+    $lo[$ck] = '';
+  }
+  update_option('langa_tools_legal_settings', $lo, false);
+  if (function_exists('langa_tools_client_legal_ensure_pages')) {
+    langa_tools_client_legal_ensure_pages(true, true);
+  }
+  // Trash disabled pages
+  $refreshed = get_option('langa_tools_legal_settings', array());
+  if (!is_array($refreshed)) $refreshed = array();
+  $opt_pages = array('terms_enabled'=>'terms_page_id','impressum_enabled'=>'impressum_page_id');
+  foreach ($opt_pages as $fk => $pk) {
+    if (empty($lo[$fk]) && !empty($refreshed[$pk]) && get_post_status((int)$refreshed[$pk])) {
+      wp_trash_post((int)$refreshed[$pk]);
+      $refreshed[$pk] = 0;
+    }
+  }
+  update_option('langa_tools_legal_settings', $refreshed, false);
+  $applied[] = 'Legal';
 
   // Save global site type
   update_option('langa_tools_smart_setup_type', $site_type, false);

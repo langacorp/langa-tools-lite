@@ -149,10 +149,10 @@ button#collapse-button { display: none!important; }
   function saveOrder(){
     var body=new FormData();
     body.append(\'action\',\'langtoli_save_menu_order\');
-    body.append(\'' . esc_js($nonce_name) . '\',\'' . esc_js($nonce) . '\');
+    body.append(\'' . $nonce_name . '\',\'' . $nonce . '\');
     body.append(\'order\', JSON.stringify(collectOrder()));
 
-    fetch(\'' . esc_js($ajaxurl) . '\', {
+    fetch(\'' . $ajaxurl . '\', {
       method:\'POST\',
       credentials:\'same-origin\',
       body:body

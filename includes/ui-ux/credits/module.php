@@ -7,26 +7,81 @@ if (!defined('LANGA_TOOLS_OPTION_CREDITS')) define('LANGA_TOOLS_OPTION_CREDITS',
  * CREDITS [v1.5.8.7] — IFRAME-ONLY architecture
  *
  * BOTH modes render inside an <iframe> for total CSS isolation.
- *   Credits enabled → srcdoc iframe (admin-configured branding)
- *   Credits disabled → nothing rendered (default)
+ *   LICENSE VALID + credits ON → srcdoc iframe (colored, self-contained)
+ *   LICENSE INVALID            → src iframe from langa.tv (grayscale)
  *
  * The main page only has: button, bottom-border, gradient, iframe.
  * NO form elements in the page DOM → NO theme/plugin CSS interference.
  * ════════════════════════════════════════════════════════════════ */
 
 function langa_credits_mode() {
-  // OPT-IN ONLY: credits show only when admin explicitly enables them.
-  // Default is OFF. Admin opts in via UI/UX > Credits toggle.
-  // No server override, no forced iframe, no license-dependent behavior.
-  $as = get_option('langa_tools_adminux_settings', array());
-  if (is_array($as) && !empty($as['credits_enabled'])) {
+  // ─── EXPLICIT USER CHOICE — highest priority after ban ─────────
+  $as_early = get_option('langa_tools_adminux_settings', array());
+  if (is_array($as_early) && array_key_exists('credits_enabled', $as_early)) {
+    if (empty($as_early['credits_enabled'])) {
+      return 'off'; // User explicitly said OFF — no override possible
+    }
+  }
+
+  // ─── DEV BYPASS ────────────────────────────────────────────────
+  if (function_exists('langa_tools_client_dev_bypass_active') && langa_tools_client_dev_bypass_active()) {
     return 'local';
   }
+
+  // ─── GLOBAL BAN CHECK ─────────────────────────────────
+  // Ban = nuclear. ALL client features off, including colored credits.
+  // Only server-controlled grey bar (credits flag) can survive ban.
+  if ((int) get_option('langa_tools_banned', 0) === 1) {
+    $sv = get_option('langa_tools_credits_visible');
+    if ($sv !== false && (int) $sv === 1) {
+      return 'iframe'; // Server says show grey → grey survives ban
+    }
+    return 'off'; // Banned + no server grey = nothing
+  }
+
+  // Server grey credits override (set by mu-plugin via guard/status API)
+  // grey_credits=1 (ON)  → FORCE grey bar, overrides any client config
+  // grey_credits=0 (OFF) → grey OFF, client decides about colored only
+  // not set (false)       → legacy fallback logic
+  $sv = get_option('langa_tools_credits_visible');
+  if ($sv !== false) {
+    if ((int) $sv === 1) {
+      return 'iframe'; // Force grey credits bar
+    }
+    // Server explicitly said grey OFF — check if client has colored enabled.
+    // Lite is free: colored credits work without license check.
+    $cs = get_option('langa_tools_credits_settings', null);
+    if (is_array($cs) && isset($cs['enabled'])) {
+      return !empty($cs['enabled']) ? 'local' : 'off';
+    }
+    $as = get_option('langa_tools_adminux_settings', array());
+    if (is_array($as) && isset($as['credits_enabled'])) {
+      return !empty($as['credits_enabled']) ? 'local' : 'off';
+    }
+    return 'off'; // Server said no grey, client didn't enable colored
+  }
+
+  // ── Legacy fallback (no server sync yet) ──
+  // Lite: colored credits never need license. Only grey is forced.
   $cs = get_option('langa_tools_credits_settings', null);
-  if (is_array($cs) && !empty($cs['enabled'])) {
+  if (is_array($cs) && isset($cs['enabled']) && !empty($cs['enabled'])) {
     return 'local';
   }
-  return 'off';
+  $s = get_option('langa_tools_adminux_settings', array());
+  if (is_array($s) && isset($s['credits_enabled']) && !empty($s['credits_enabled'])) {
+    return 'local';
+  }
+  // No colored enabled → check if grey should show
+  $lic_ok = function_exists('langa_tools_client_license_is_valid') && langa_tools_client_license_is_valid();
+  if (!$lic_ok) {
+    $last = function_exists('langa_tools_client_license_last') ? langa_tools_client_license_last() : array();
+    if (is_array($last) && isset($last['grey_credits']) && (int) $last['grey_credits'] === 0) {
+      return 'off';
+    }
+    return 'iframe'; // default grey for unlicensed with no colored
+  }
+  // Licensed but no colored → grey
+  return 'iframe';
 }
 
 function langa_credits_enabled() {
@@ -58,6 +113,15 @@ function langa_credits_primary_color() {
 }
 
 function langa_credits_recipient() {
+  // Gray/iframe mode always goes to developer
+  if (langa_credits_mode() === 'iframe') {
+    // Use developer email from Data if set
+    if (function_exists('langa_tools_client_get_site_data')) {
+      $de = (string)langa_tools_client_get_site_data('developer.email', '');
+      if ($de !== '' && is_email($de)) return $de;
+    }
+    return 'admin@langa.tv';
+  }
   // 1. Centralized: Data > Developer > email
   if (function_exists('langa_tools_client_get_site_data')) {
     $de = (string)langa_tools_client_get_site_data('developer.email', '');
@@ -212,21 +276,9 @@ add_action('wp_footer','langa_credits_root',9999);
  *  Local mode: srcdoc = self-contained HTML document
  * ════════════════════════════════════════════════════════ */
 
-
-add_action('wp_enqueue_scripts', function(){
-  if (langa_credits_mode() === 'off') return;
-  $c = langa_credits_primary_color();
-  $h = ltrim($c,'#');
-  if (strlen($h)===3) $h=$h[0].$h[0].$h[1].$h[1].$h[2].$h[2];
-  $vars=':root{--lc-c:'.esc_attr($c).';--lc-rgb:'.(int)hexdec(substr($h,0,2)).','.(int)hexdec(substr($h,2,2)).','.(int)hexdec(substr($h,4,2)).'}';
-  wp_enqueue_style('langa-credits-btn', LANGA_TOOLS_CLIENT_URL.'assets/css/credits-btn.css', array(), '1.0');
-  wp_add_inline_style('langa-credits-btn', $vars);
-}, 99);
-
 add_action('wp_footer', function(){
   $mode = langa_credits_mode();
   if ($mode === 'off') return;
-  $_s='style'; $_sc='script'; $_lk='link';
 
   $color = ($mode === 'local') ? langa_credits_primary_color() : '#999999';
 
@@ -238,27 +290,112 @@ add_action('wp_footer', function(){
   ?>
 
   <!-- LANGA Credits [v1.6.0.0] mode=<?php echo esc_attr($mode); ?> -->
-  <?php /* CSS enqueued via wp_enqueue_scripts hook */ ?>
-
+  <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStyle -- wp_footer callback ?>
+  <style>
+  /*! LANGA Credits — main page: button + border + gradient + iframe only */
+  html body button#langa-button{
+    position:fixed!important;right:7px!important;bottom:0!important;
+    display:block!important;float:none!important;
+    color:<?php echo esc_attr($color); ?>!important;
+    font:400 14px/25px 'Open Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif!important;
+    letter-spacing:-.2px!important;text-transform:capitalize!important;
+    height:27px!important;width:auto!important;cursor:pointer!important;
+    background:transparent!important;border:none!important;box-shadow:none!important;
+    padding:0!important;margin:0!important;outline:none!important;
+    z-index:2147483647!important;text-align:right!important;
+    min-height:0!important;min-width:0!important;max-width:none!important;
+    text-decoration:none!important;-webkit-appearance:none!important;appearance:none!important;
+    border-radius:0!important;text-shadow:none!important;background-image:none!important;
+    transform:none!important;overflow:visible!important;
+  }
+  html body button#langa-button:hover,html body button#langa-button:focus,
+  html body button#langa-button:active,html body button#langa-button:focus-visible{
+    outline:none!important;box-shadow:none!important;background:transparent!important;
+    color:<?php echo esc_attr($color); ?>!important;border:none!important;text-decoration:none!important;
+  }
+  html body button#langa-button::before{display:none!important;content:none!important;background-color:transparent!important;}
+  .cmsmasters-theme-button:before,button:before{background-color:transparent!important;}
+  .cmsmasters-theme-button:after,button:after{background-color:transparent!important;}
+  html body button#langa-button::after{
+    content:""!important;position:absolute!important;right:-7px!important;bottom:0!important;
+    top:auto!important;left:auto!important;
+    width:200px!important;height:140px!important;
+    pointer-events:none!important;z-index:-1!important;
+    background:radial-gradient(ellipse at 100% 100%,<?php echo "rgba({$r},{$g},{$b},0.14)"; ?> 0%,transparent 70%)!important;
+    display:block!important;border:none!important;padding:0!important;margin:0!important;
+    opacity:1!important;border-radius:0!important;transition:none!important;
+  }
+  html body button#langa-button:hover::after{
+    background:radial-gradient(ellipse at 100% 100%,<?php echo "rgba({$r},{$g},{$b},0.21)"; ?> 0%,transparent 70%)!important;
+  }
+  @media(max-width:680px){html body button#langa-button::after{width:150px!important;height:100px!important;}}
+  html body div#langa-bottom-border{
+    position:fixed!important;bottom:0!important;left:0!important;
+    height:1px!important;width:100%!important;
+    background:<?php echo esc_attr($color); ?>!important;
+    display:block!important;border:none!important;padding:0!important;margin:0!important;
+  }
+  html body iframe#langa-credits-iframe{
+    display:none!important;position:fixed!important;top:0!important;left:0!important;
+    width:100%!important;height:100%!important;z-index:2147483640!important;
+    border:none!important;padding:0!important;margin:0!important;
+    background:transparent!important;
+    <?php if ($mode === 'iframe'): ?>filter:grayscale(100%)!important;-webkit-filter:grayscale(100%)!important;<?php endif; ?>
+  }
+  html body iframe#langa-credits-iframe.is-open{display:block!important;}
+  </style>
 
   <?php
     $nonce = wp_create_nonce('langa_credits_submit');
     $ajax  = admin_url('admin-ajax.php');
 
-    // Local mode: admin-configured branding (WP.org Lite)
-    $logo = esc_url(langa_credits_logo_url());
+    if ($mode === 'iframe') {
+      // Grey mode: FIXED LANGA branding — ignores client config, translated
+      $logo = 'https://about.langa.tv/wp-content/uploads/2024/03/LANGA-logo.webp';
+      $gl = function_exists('langa_tools_client_detect_lang') ? langa_tools_client_detect_lang() : 'en';
+      $grey_i18n = array(
+        'it' => array('s'=>'Sito non attivo','sv'=>array('Sito web vetrina','Sviluppo sito web dinamico','Piattaforma eCommerce','Web design personalizzato','Gestione dei social media','Miglioramento del SEO','Brand identity','Grafica creativa','Servizio fotografico','Creazione video promo','Video emozionale','Marketing strategico','Altre operazioni marketing')),
+        'en' => array('s'=>'Site not active','sv'=>array('Showcase website','Dynamic website development','eCommerce platform','Custom web design','Social media management','SEO optimization','Brand identity','Creative graphics','Photo shooting','Promo video production','Emotional video','Strategic marketing','Other marketing services')),
+        'fr' => array('s'=>'Site non actif','sv'=>array('Site vitrine','Site web dynamique','Plateforme eCommerce','Web design sur mesure','Gestion des réseaux sociaux','Optimisation SEO','Identité de marque','Graphisme créatif','Service photographique','Production vidéo promo','Vidéo émotionnelle','Marketing stratégique','Autres services marketing')),
+        'es' => array('s'=>'Sitio no activo','sv'=>array('Sitio web vitrina','Desarrollo web dinámico','Plataforma eCommerce','Diseño web personalizado','Gestión de redes sociales','Optimización SEO','Identidad de marca','Gráfica creativa','Servicio fotográfico','Producción de vídeo promo','Vídeo emocional','Marketing estratégico','Otros servicios de marketing')),
+        'de' => array('s'=>'Website nicht aktiv','sv'=>array('Showcase-Website','Dynamische Webentwicklung','eCommerce-Plattform','Individuelles Webdesign','Social Media Management','SEO-Optimierung','Markenidentität','Kreative Grafik','Fotoshooting','Promo-Videoproduktion','Emotionales Video','Strategisches Marketing','Weitere Marketingdienste')),
+        'ru' => array('s'=>'\u0418\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442 \u0434\u043b\u044f \u0432\u0435\u0431\u0430','sv'=>array('\u0412\u0438\u0442\u0440\u0438\u043d\u0430','\u0414\u0438\u043d\u0430\u043c\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0441\u0430\u0439\u0442','eCommerce','\u0412\u0435\u0431-\u0434\u0438\u0437\u0430\u0439\u043d','SMM','SEO','\u0411\u0440\u0435\u043d\u0434\u0438\u043d\u0433','\u0413\u0440\u0430\u0444\u0438\u043a\u0430','\u0424\u043e\u0442\u043e','\u041f\u0440\u043e\u043c\u043e-\u0432\u0438\u0434\u0435\u043e','\u042d\u043c\u043e\u0446\u0438\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0435 \u0432\u0438\u0434\u0435\u043e','\u0421\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043c\u0430\u0440\u043a\u0435\u0442\u0438\u043d\u0433','\u0414\u0440\u0443\u0433\u0438\u0435 \u0443\u0441\u043b\u0443\u0433\u0438')),
+        'ar' => array('s'=>'\u0623\u062f\u0627\u0629 \u0627\u0644\u0648\u064a\u0628','sv'=>array('\u0645\u0648\u0642\u0639 \u0639\u0631\u0636','\u062a\u0637\u0648\u064a\u0631 \u0645\u0648\u0627\u0642\u0639','\u0645\u0646\u0635\u0629 \u062a\u062c\u0627\u0631\u0629','\u062a\u0635\u0645\u064a\u0645 \u0648\u064a\u0628','\u0625\u062f\u0627\u0631\u0629 \u0627\u0644\u0633\u0648\u0634\u064a\u0627\u0644','SEO','\u0647\u0648\u064a\u0629 \u0627\u0644\u0639\u0644\u0627\u0645\u0629','\u062a\u0635\u0645\u064a\u0645 \u0625\u0628\u062f\u0627\u0639\u064a','\u062a\u0635\u0648\u064a\u0631','\u0625\u0646\u062a\u0627\u062c \u0641\u064a\u062f\u064a\u0648','\u0641\u064a\u062f\u064a\u0648 \u0639\u0627\u0637\u0641\u064a','\u062a\u0633\u0648\u064a\u0642','\u062e\u062f\u0645\u0627\u062a \u0623\u062e\u0631\u0649')),
+        'pt' => array('s'=>'Site não ativo','sv'=>array('Site vitrine','Desenvolvimento web','Plataforma eCommerce','Web design personalizado','Gestão de redes sociais','Otimização SEO','Identidade de marca','Design gráfico','Fotografia','Produção de vídeo','Vídeo emocional','Marketing estratégico','Outros serviços')),
+      );
+      $gi = isset($grey_i18n[$gl]) ? $grey_i18n[$gl] : $grey_i18n['en'];
+      $slogan = $gi['s'];
+      $services = $gi['sv'];
+      $footer = array(
+        'privacy_url' => 'https://about.langa.tv/legal/privacy-policy/',
+        'terms_url'   => 'https://about.langa.tv/legal/terms/',
+        'about_url'   => 'https://about.langa.tv/',
+      );
+      $devweb = 'https://about.langa.tv';
+    } else {
+      // Colored mode: client's own config from Settings > Data
+      $logo = esc_url(langa_credits_logo_url());
       $slogan = langa_credits_slogan();
       $services = langa_credits_services();
       $footer = langa_credits_footer_links();
       $devweb = langa_credits_developer_website();
+    }
     $html = langa_credits_build_srcdoc($color, $r, $g, $b, $logo, $nonce, $ajax, $slogan, $services, $footer, $devweb);
   ?>
   <iframe id="langa-credits-iframe" title="Credits" allow="" allowtransparency="true" tabindex="-1"></iframe>
   <?php // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped,WordPress.WP.EnqueuedResources.NonEnqueuedScript -- base64 encoded iframe blob template ?>
-  <?php echo "<".$_sc." type=\"text/template\" id=\"langa-credits-b64\">".esc_attr(base64_encode($html))."</".$_sc.">"; ?>
-  <?php
-  wp_print_inline_script_tag("(function(){var t=document.getElementById('langa-credits-b64');if(!t)return;var h=atob(t.textContent);t.parentNode.removeChild(t);var b=new Blob([h],{type:'text/html'});window._lcBlobUrl=URL.createObjectURL(b);})();");
-  ?>
+  <script type="text/template" id="langa-credits-b64"><?php echo base64_encode($html); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- base64 of self-contained HTML ?></script>
+  <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- wp_footer callback, blob injection ?>
+  <script>
+  (function(){
+    var t=document.getElementById('langa-credits-b64');
+    if(!t)return;
+    var h=atob(t.textContent);
+    t.parentNode.removeChild(t);
+    var b=new Blob([h],{type:'text/html'});
+    window._lcBlobUrl=URL.createObjectURL(b);
+  })();
+  </script>
   <?php
 }, 9998);
 
@@ -268,13 +405,12 @@ add_action('wp_footer', function(){
  * SRCDOC builder — gray reference structure, color-swapped
  *
  * Uses EXACT same HTML/CSS from langa-credits gray bar.
- * Runs inside iframe (standalone HTML). Admin-configured branding only.
- * Runs INSIDE iframe (standalone HTML). jQuery required for select2 multi-select widget.
+ * Both gray and colored modes use this (gray = grayscale filter).
+ * Runs INSIDE iframe. jQuery + select2 from CDN.
  * Themes, plugins, page builders CANNOT touch it.
  * ════════════════════════════════════════════════════════ */
 
 function langa_credits_build_srcdoc($color, $r, $g, $b, $logo, $nonce, $ajax, $slogan = '', $services = array(), $footer = array(), $dev_website = '') {
-  $_s='style'; $_sc='script'; $_lk='link';
   if ($slogan === '') $slogan = 'The tool for the web';
   if (empty($services)) $services = langa_credits_services();
   if (empty($footer)) $footer = langa_credits_footer_links();
@@ -286,20 +422,22 @@ function langa_credits_build_srcdoc($color, $r, $g, $b, $logo, $nonce, $ajax, $s
   $C_bg  = $C_rgb ? sprintf('rgba(%d,%d,%d,0.1)', $C_rgb[0], $C_rgb[1], $C_rgb[2]) : 'rgba(243,127,13,0.1)';
 
   ob_start();
-?>
-<!-- This entire section builds a self-contained HTML document used as iframe srcdoc for CSS isolation. wp_enqueue_* functions are not available because this HTML is injected as a Blob URL, not rendered by WordPress. All variables are individually escaped. --><!-- phpcs:disable WordPress.WP.EnqueuedResources -->
+?><!-- phpcs:disable WordPress.WP.EnqueuedResources -- standalone HTML document served as iframe srcdoc -->
 <!DOCTYPE html>
-<html lang="<?php echo esc_attr(substr(get_locale(), 0, 2)); ?>">
+<html lang="<?php echo substr(get_locale(), 0, 2); ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- inside self-contained iframe srcdoc ?>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans">
 <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet -- inside self-contained iframe srcdoc, not main page ?>
-<<?php echo $_lk; ?> rel="stylesheet" href="<?php echo esc_url(LANGA_TOOLS_CLIENT_URL . 'assets/vendor/select2-minimal.css'); ?>">
+<link rel="stylesheet" href="<?php echo esc_url(LANGA_TOOLS_CLIENT_URL . 'assets/vendor/select2-minimal.css'); ?>">
 <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- inside self-contained iframe srcdoc ?>
+<script src="<?php echo esc_url(includes_url('js/jquery/jquery.min.js')); ?>"></script>
 <?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- inside self-contained iframe srcdoc ?>
-<<?php echo $_sc; ?> src="<?php echo esc_url(LANGA_TOOLS_CLIENT_URL . 'assets/vendor/select2-minimal.js'); ?>"></<?php echo $_sc; ?>>
-<<?php echo $_s; ?>>
+<script src="<?php echo esc_url(LANGA_TOOLS_CLIENT_URL . 'assets/vendor/select2-minimal.js'); ?>"></script>
+<?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStyle -- wp_footer callback ?>
+<style>
 /* ═══ GRAY REFERENCE style.css — color replaced ═══ */
 
 #langa-form-container {
@@ -325,7 +463,7 @@ a:hover{color:<?php echo esc_attr($C); ?>!important;opacity:.8}
 /* FONTS */
 body input,body span#form-description,body span.step-error,
 body span.step-header,body button,body *{
-    font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif,sans-serif!important;
+    font-family:'Open Sans',sans-serif!important;
 }
 
 body .next-button button{
@@ -570,7 +708,7 @@ body input#appointment_date,body input#appointment_time{flex-direction:row-rever
 @media screen and (max-width:340px){
     body .appointment button{font-size:13px!important}
 }
-</<?php echo $_s; ?>>
+</style>
 </head>
 <body style="cursor:default;margin:0;padding:0;background:transparent;overflow:hidden;height:100%;">
 <div id="lcf-overlay">
@@ -688,7 +826,8 @@ body input#appointment_date,body input#appointment_time{flex-direction:row-rever
     </div>
 </div>
 
-<<?php echo $_sc; ?>>
+<?php // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- wp_footer callback, blob injection ?>
+<script>
 var AJAX_URL=<?php echo wp_json_encode(esc_url_raw($ajax)); ?>;
 var NONCE=<?php echo wp_json_encode($nonce); ?>;
 var ORIGIN=<?php echo wp_json_encode(esc_url_raw($origin)); ?>;
@@ -888,31 +1027,31 @@ function showKeyboard(){
 
 function lf_next_step(){
     if(!lf_validate_step()){
-        document.getElementById('form-fields').classList.add('wrong-input');
+        jQuery('#form-fields').addClass('wrong-input');
         showKeyboard();return false;
     }
-    document.getElementById('form-fields').classList.remove('wrong-input');
+    jQuery('#form-fields').removeClass('wrong-input');
     if(currentStep<numOfSteps){
         hideStep(currentStep);
         currentStep=(currentStep+1)%numOfSteps;
         showStep(currentStep);
         maxVisitedStep=Math.max(currentStep,maxVisitedStep);
-        document.querySelector('.previous-button').style.display='';
+        jQuery('.previous-button').show();
         if(currentStep===numOfSteps-1){
-            document.getElementById('lf-next-button').style.display='none';
-            document.getElementById('lf-send-button').style.display='';
+            jQuery('#lf-next-button').hide();
+            jQuery('#lf-send-button').show();
         }
     }
 }
 
 function lf_previous_step(){
-    document.getElementById('form-fields').classList.remove('wrong-input');
+    jQuery('#form-fields').removeClass('wrong-input');
     hideStep(currentStep);
     currentStep=Math.max(0,(currentStep-1)%numOfSteps);
     showStep(currentStep);
-    if(currentStep===0)document.querySelector('.previous-button').style.display='none';
-    document.getElementById('lf-send-button').style.display='none';
-    document.getElementById('lf-next-button').style.display='';
+    if(currentStep===0)jQuery('.previous-button').hide();
+    jQuery('#lf-send-button').hide();
+    jQuery('#lf-next-button').show();
 }
 
 function isValideEmail(v){return /^[a-zA-Z0-9.\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(v)}
@@ -920,18 +1059,18 @@ function isValideDate(d){d=d||dateInput.value;return(new Date(d)>=new Date(minDa
 function isValideTime(t){t=t||timeInput.value;return(t>=minTime&&t<=maxTime)||!timeSpecified}
 function checkDateAndTime(){
     if(!isValideDate()){
-        document.getElementById('form-fields').classList.add('wrong-input');
+        jQuery('#form-fields').addClass('wrong-input');
         if(langaContainer.querySelector('.time-error'))langaContainer.querySelector('.time-error').style.display='none';
         if(langaContainer.querySelector('.date-error'))langaContainer.querySelector('.date-error').style.display='inline';
         return false;
     }
     if(!isValideTime()){
-        document.getElementById('form-fields').classList.add('wrong-input');
+        jQuery('#form-fields').addClass('wrong-input');
         if(langaContainer.querySelector('.date-error'))langaContainer.querySelector('.date-error').style.display='none';
         if(langaContainer.querySelector('.time-error'))langaContainer.querySelector('.time-error').style.display='inline';
         return false;
     }
-    document.getElementById('form-fields').classList.remove('wrong-input');
+    jQuery('#form-fields').removeClass('wrong-input');
     if(langaContainer.querySelector('.date-error'))langaContainer.querySelector('.date-error').style.display='none';
     if(langaContainer.querySelector('.time-error'))langaContainer.querySelector('.time-error').style.display='none';
     return true;
@@ -984,9 +1123,9 @@ function lf_send_form(){
     fd.append('lang',LANG_KEY);
     fetch(AJAX_URL,{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
         if(d.success){
-            document.querySelector('.previous-button').style.display='none';
-            document.getElementById('form-fields').style.display='none';
-            document.getElementById('lf-success-state').style.display='';
+            jQuery('.previous-button').hide();
+            jQuery('#form-fields').hide();
+            jQuery('#lf-success-state').show();
             langaContainer.style.backgroundColor='#fff';
             formAlreadySubmitted=true;
             setTimeout(function(){parent.postMessage({type:'langa-credits-done'},'*')},4000);
@@ -1082,7 +1221,7 @@ document.addEventListener('DOMContentLoaded',function(){
       window.visualViewport.addEventListener('scroll',onVPResize);
     }
 });
-</<?php echo $_sc; ?>>
+</script>
 </body>
 </html><?php
   return ob_get_clean();
@@ -1127,7 +1266,7 @@ function langa_credits_handle_submit() {
   $lbl = isset($i18n_labels[$lang]) ? $i18n_labels[$lang] : $i18n_labels['en'];
 
   $to=langa_credits_recipient();$site=get_bloginfo('name','display');
-  $color = langa_credits_primary_color();
+  $color = (langa_credits_mode() === 'iframe') ? '#999999' : langa_credits_primary_color();
   $subject='Credits — '.$name.' — '.$site;
   $td='<td style="padding:6px 10px;font-weight:600;color:#374151;width:120px;">';
   $tv='<td style="padding:6px 10px;">';
@@ -1171,6 +1310,7 @@ function langa_credits_handle_submit() {
       'accent_color' => $color,
     );
     // Grey mode: email always in English
+    if (langa_credits_mode() === 'iframe') $conf_args['lang'] = 'en';
     langa_tools_client_mail_send_confirmation($conf_args);
   }
 

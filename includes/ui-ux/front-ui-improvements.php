@@ -110,29 +110,29 @@ function langa_tools_client_adminux_login_button_html($type, $id_value, $color =
     if ($color) $color_style = 'color:' . esc_attr($color) . ';';
   }
 
-  return '<span class="langa-id-login" style="display:inline;white-space:nowrap;vertical-align:baseline"><a href="'.esc_url($url).'" style="display:inline;white-space:nowrap;text-decoration:underline;vertical-align:baseline;'.$color_style.'color:'.($color_style ? esc_attr($color) : 'inherit').'">'.esc_html($label).'</a></span>';
+  return '<span class="langa-id-login" style="display:inline;white-space:nowrap;vertical-align:baseline"><a href="'.esc_url($url).'" style="display:inline;white-space:nowrap;text-decoration:underline;vertical-align:baseline;'.$color_style.'color:'.($color_style ? esc_attr($color) : 'inherit').'">'.$label.'</a></span>';
 }
 
 function langa_tools_client_shortcode_support_id($atts=array(), $content=null) {
   $a = shortcode_atts(array('color'=>''), (array)$atts, 'support_id');
   $user_id = get_current_user_id();
   if (!$user_id) {
-    return wp_kses_post(langa_tools_client_adminux_login_button_html('support', '', $a['color']));
+    return langa_tools_client_adminux_login_button_html('support', '', $a['color']);
   }
   langa_tools_client_adminux_ensure_ids($user_id);
   $val = get_user_meta($user_id, 'support_id', true);
-  return wp_kses_post(langa_tools_client_adminux_render_id_or_login('support', (string)$val, $a['color']));
+  return langa_tools_client_adminux_render_id_or_login('support', (string)$val, $a['color']);
 }
 
 function langa_tools_client_shortcode_friend_id($atts=array(), $content=null) {
   $a = shortcode_atts(array('color'=>''), (array)$atts, 'friend_id');
   $user_id = get_current_user_id();
   if (!$user_id) {
-    return wp_kses_post(langa_tools_client_adminux_login_button_html('friend', '', $a['color']));
+    return langa_tools_client_adminux_login_button_html('friend', '', $a['color']);
   }
   langa_tools_client_adminux_ensure_ids($user_id);
   $val = get_user_meta($user_id, 'friend_id', true);
-  return wp_kses_post(langa_tools_client_adminux_render_id_or_login('friend', (string)$val, $a['color']));
+  return langa_tools_client_adminux_render_id_or_login('friend', (string)$val, $a['color']);
 }
 
 function langa_tools_client_shortcode_breadcrumb_alias($atts=array(), $content=null) {
@@ -146,7 +146,7 @@ function langa_tools_client_shortcode_breadcrumb_alias($atts=array(), $content=n
     if ($sep !== null) $parts[] = 'separator="'.esc_attr($sep).'"';
     if ($class !== null) $parts[] = 'class="'.esc_attr($class).'"';
     if ($home !== null) $parts[] = 'home="'.esc_attr($home).'"';
-    return wp_kses_post(do_shortcode('[langa_breadcrumbs '.implode(' ', $parts).']'));
+    return do_shortcode('[langa_breadcrumbs '.implode(' ', $parts).']');
   }
   return '';
 }
@@ -174,7 +174,7 @@ function langa_tools_client_shortcode_temp($atts = array(), $content = null) {
   if ($now < $from || $now > $to) return '';
 
   if ($content === null || $content === '') return '';
-  return wp_kses_post(do_shortcode($content));
+  return do_shortcode($content);
 }
 
 /**
@@ -338,6 +338,6 @@ if (!function_exists('langa_tools_client_adminux_render_id_or_login')) {
       }
       return '<span class="langa-id-code" style="display:inline;white-space:nowrap;vertical-align:baseline;font-family:monospace;font-size:inherit;line-height:inherit;'.$color_style.'">'.esc_html($fmt).'</span>';
     }
-    return wp_kses_post(langa_tools_client_adminux_login_button_html($type, '', $color));
+    return langa_tools_client_adminux_login_button_html($type, '', $color);
   }
 }

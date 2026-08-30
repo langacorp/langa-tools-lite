@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name: LANGA Tools Lite
- * Description: Free UI/UX toolkit for WordPress — admin branding, custom login, maintenance mode, credits, seasonal effects, visual sitemap.
- * Version: 1.0.39
+ * Description: Free UI/UX toolkit for WordPress — admin branding, maintenance mode, custom login, credits. Upgrade to PRO for SEO, Forms, Safer, Cache, Legal, BC, Popup & more.
+ * Version: 1.0.32
  * Author: LANGA
  * Author URI: https://langa.tv
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: langa-tools-lite
- * Requires at least: 5.7
+ * Requires at least: 5.6
  * Requires PHP: 7.4
  */
 if (!defined('ABSPATH')) exit;
@@ -35,7 +35,7 @@ $_langa_active_plugins = (array) get_option('active_plugins', array());
 $_langa_pro_found = false;
 // Check both old folder (langa-tools-client) and new folder (langa-tools-pro)
 foreach (array('langa-tools-client/langa-tools-client.php', 'langa-tools-pro/langa-tools-pro.php') as $_pro_slug) {
-  if (file_exists(dirname(dirname(__FILE__)) . '/' . $_pro_slug) && in_array($_pro_slug, $_langa_active_plugins, true)) {
+  if (file_exists(WP_PLUGIN_DIR . '/' . $_pro_slug) && in_array($_pro_slug, $_langa_active_plugins, true)) {
     $_langa_pro_found = true;
     break;
   }
@@ -54,7 +54,7 @@ if ($_langa_pro_found) {
 }
 unset($_langa_active_plugins, $_langa_pro_found);
 
-if (!defined('LANGA_TOOLS_CLIENT_VERSION')) define('LANGA_TOOLS_CLIENT_VERSION', '1.0.39');
+if (!defined('LANGA_TOOLS_CLIENT_VERSION')) define('LANGA_TOOLS_CLIENT_VERSION', '1.0.31');
 if (!defined('LANGA_TOOLS_CLIENT_PATH'))    define('LANGA_TOOLS_CLIENT_PATH', plugin_dir_path(__FILE__));
 if (!defined('LANGA_TOOLS_CLIENT_URL'))     define('LANGA_TOOLS_CLIENT_URL', plugin_dir_url(__FILE__));
 if (!defined('LANGA_TOOLS_CLIENT_DIR'))     define('LANGA_TOOLS_CLIENT_DIR', LANGA_TOOLS_CLIENT_PATH);
@@ -64,38 +64,49 @@ if (!defined('LANGA_TOOLS_IS_LITE'))        define('LANGA_TOOLS_IS_LITE', true);
  * Output inline script using WP's recommended function (5.7+) with fallback.
  * Safe for admin page callbacks where wp_add_inline_script timing is not possible.
  *
- * @param string $js JavaScript code (without wrapping tags).
+ * @param string $js JavaScript code (no <script> tags).
  */
 function langtoli_inline_script($js) {
-  wp_print_inline_script_tag($js);
+  if (function_exists('wp_print_inline_script_tag')) {
+    wp_print_inline_script_tag($js);
+  } else {
+    // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript,WordPress.Security.EscapeOutput.OutputNotEscaped -- admin inline JS helper
+    echo '<script>' . $js . '</script>' . "\n";
+  }
 }
 
 /**
  * Output inline style safely.
  *
- * @param string $css CSS code (without wrapping tags).
+ * @param string $css CSS code (no <style> tags).
  * @param string $id  Optional style element ID.
  */
 function langtoli_inline_style($css, $id = '') {
-  static $n = 0; $n++;
-  $h = 'langtoli-is-' . ($id !== '' ? sanitize_key($id) : $n);
-  wp_register_style($h, false);
-  wp_add_inline_style($h, wp_strip_all_tags($css));
-  wp_print_styles(array($h));
+  $attr = $id !== '' ? ' id="' . esc_attr($id) . '"' : '';
+  if (function_exists('wp_print_inline_script_tag')) {
+    // WP 5.7+ style output pattern
+    echo '<style' . $attr . '>' . $css . '</style>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- safe CSS
+  } else {
+    echo '<style' . $attr . '>' . $css . '</style>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- safe CSS
+  }
 }
 
 require_once LANGA_TOOLS_CLIENT_PATH . 'config/constants.php';
+require_once LANGA_TOOLS_CLIENT_PATH . 'core/auth.php';
+require_once LANGA_TOOLS_CLIENT_PATH . 'core/api-client.php';
+require_once LANGA_TOOLS_CLIENT_PATH . 'core/license.php';
 require_once LANGA_TOOLS_CLIENT_PATH . 'includes/registry.php';
 require_once LANGA_TOOLS_CLIENT_PATH . 'includes/i18n.php';
 require_once LANGA_TOOLS_CLIENT_PATH . 'includes/debug.php';
 require_once LANGA_TOOLS_CLIENT_PATH . 'includes/site-data.php';
-// Mail module removed from Lite WP.org build (available in LANGA Tools PRO).
+require_once LANGA_TOOLS_CLIENT_PATH . 'includes/mail/module.php';
 require_once LANGA_TOOLS_CLIENT_PATH . 'includes/assets-proxy.php';
+require_once LANGA_TOOLS_CLIENT_PATH . 'includes/sync-protocol.php';
 
-// ── Auto-updater removed for WP.org (updates via repository) ──
-// require_once LANGA_TOOLS_CLIENT_PATH . 'core/updater.php';
-// $_langa_lite_updater = new Langa_Tools_Lite_Updater(__FILE__, LANGA_TOOLS_CLIENT_VERSION);
-// $_langa_lite_updater->init();
+// ── Auto-updater ──
+require_once LANGA_TOOLS_CLIENT_PATH . 'core/updater.php';
+$_langa_lite_updater = new Langa_Tools_Lite_Updater(__FILE__, LANGA_TOOLS_CLIENT_VERSION);
+$_langa_lite_updater->init();
 if (!defined('LANGA_TOOLS_UIUX_LOADED')) {
   define('LANGA_TOOLS_UIUX_LOADED', 'lite');
 }
@@ -127,7 +138,7 @@ add_action('init', function () {
     if ($from === null || $to === null || $to < $from) return '';
     $now = time();
     if ($now < $from || $now > $to) return '';
-    return wp_kses_post(do_shortcode($content));
+    return do_shortcode($content);
   };
   add_shortcode('langtoli_temp', $langtoli_temp_cb);
 }, 1);
@@ -136,6 +147,10 @@ add_action('init', function () {
 add_action('plugins_loaded', function () {
   if (function_exists('langa_tools_client_adminux_boot')) {
     langa_tools_client_adminux_boot();
+  }
+  // Boot Bridge Protocol crons (always-on for Lite)
+  if (function_exists('langa_bridge_schedule_crons')) {
+    langa_bridge_schedule_crons();
   }
 }, 10);
 
@@ -180,6 +195,9 @@ register_deactivation_hook(__FILE__, function() {
   $ts = wp_next_scheduled('langa_tools_client_license_refresh');
   if ($ts) wp_unschedule_event($ts, 'langa_tools_client_license_refresh');
   // Clean up Bridge crons
+  if (function_exists('langa_bridge_unschedule_crons')) {
+    langa_bridge_unschedule_crons();
+  }
 });
 
 /** Install mu-plugin dependencies */
@@ -220,8 +238,10 @@ function langa_tools_lite_install_mu_plugin() {
       }
     }
   }
-  // Lite: no protection guard — mixcode defaults to 0 (unlocked).
-  // Guard is PRO-only. See starter-visual-builder.php stub.
+  // Protection: default locked. Server can override via guard/status API.
+  if (get_option('langa_tools_mixcode') === false) {
+    update_option('langa_tools_mixcode', 1, true);
+  }
   if (defined('LANGA_TOOLS_FIXED_SERVER_URL')) {
     update_option('langa_tools_server_url', LANGA_TOOLS_FIXED_SERVER_URL, true);
   }
@@ -242,21 +262,23 @@ add_filter('plugin_action_links', function($a, $f) {
   if ($f !== plugin_basename(__FILE__)) return $a;
   return array_merge(array(
     'settings' => '<a href="'.esc_url(admin_url('admin.php?page=langa-tools-client-settings')).'">Settings</a>',
-    'upgrade'  => '<a href="https://tools.langa.tv" target="_blank" style="color:#f37f0d;font-weight:600">PRO</a>',
+    'upgrade'  => '<a href="https://tools.langa.tv/#pricing" target="_blank" style="color:#f37f0d;font-weight:700">Upgrade to PRO</a>',
   ), $a);
 }, 10, 2);
 add_filter('login_headerurl', function($u) {
   $s = get_option('langa_tools_adminux_settings', array());
   return (!is_array($s) || empty($s['login_logo_url'])) ? $u : home_url('/');
 });
-// License refresh cron removed from Lite WP.org build.
+add_action('langa_tools_client_license_refresh', function() {
+  if (function_exists('langa_tools_client_license_check')) langa_tools_client_license_check();
+});
 add_action('init', function() {
   if (shortcode_exists('langa_date_window')) return;
   add_shortcode('langa_date_window', function($atts, $content='') {
     $atts = shortcode_atts(array('date_from'=>'','date_to'=>''), $atts);
     $p = function($v,$e) { if(empty($v))return null; $d=DateTime::createFromFormat('d/m/Y',trim($v)); if(!$d)$d=DateTime::createFromFormat('Y-m-d',trim($v)); if(!$d)return null; $e?$d->setTime(23,59,59):$d->setTime(0,0,0); return $d->getTimestamp(); };
     $f=$p($atts['date_from'],false); $t=$p($atts['date_to'],true);
-    if($f===null||$t===null||$t<$f)return''; $n=time(); return($n>=$f&&$n<=$t)?wp_kses_post(do_shortcode($content)):'';
+    if($f===null||$t===null||$t<$f)return''; $n=time(); return($n>=$f&&$n<=$t)?do_shortcode($content):'';
   });
 },1);
 

@@ -165,9 +165,8 @@ function langa_tools_dashboard_render() {
   // ── CTA (Lite) ──
   if ($is_lite) {
     echo '<div class="ltw-ct">';
-    // Removed for Lite
-    // echo '<p>Unlock all modules &mdash; <strong>&euro;19.90/mo</strong> or <strong>&euro;199/yr</strong></p>';
-    // PRO CTA removed for WP.org Lite
+    echo '<p>Unlock all modules &mdash; <strong>&euro;19.90/mo</strong> or <strong>&euro;199/yr</strong></p>';
+    echo '<a href="https://tools.langa.tv/#pricing" target="_blank">Upgrade to PRO &rarr;</a>';
     echo '</div>';
   }
 

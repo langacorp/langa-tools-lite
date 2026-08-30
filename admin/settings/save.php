@@ -8,10 +8,16 @@ function langa_tools_client_handle_save_module() {
   $module = isset($_REQUEST['module']) ? sanitize_key($_REQUEST['module']) : '';
   check_admin_referer('langa_tools_client_save_module_' . $module);
 
-  // Lite WP.org: all modules are free, no license gate.
-  $lic_ok = true;
+  // ── License gate: block toggle if no license and no dev bypass ──
+  // Free modules (bridge/Events) can always be toggled
+  $lic_ok   = function_exists('langa_tools_client_license_is_valid') && langa_tools_client_license_is_valid();
   $dev_ok   = langa_tools_client_dev_bypass_active();
-  // Lite WP.org: no license gate on module toggle — all modules are free.
+  $reg      = function_exists('langa_tools_client_features_registry') ? langa_tools_client_features_registry() : array();
+  $is_free  = isset($reg[$module]['free']) && $reg[$module]['free'];
+  if (!$lic_ok && !$dev_ok && !$is_free && isset($_REQUEST['new_active'])) {
+    wp_safe_redirect(admin_url('admin.php?page=langa-tools-client-settings&tab=general&license_required=1#langa-modules'));
+    exit;
+  }
 
   // Explicit toggle from Modules tab (GET link or POST form)
   if (isset($_REQUEST['new_active'])) {
@@ -28,10 +34,12 @@ function langa_tools_client_handle_save_module() {
   // Enable/disable flag per modulo
   langa_tools_client_feature_set_enabled($module, $enabled);
 
-  // Lite WP.org: no license re-check needed. → sets killswitch to 'valid' or 'blocked'.
+  // Force immediate license re-check → sets killswitch to 'valid' or 'blocked'.
   // CRITICAL: just deleting the transient causes frontend to fall back to
   // license_ok_cached(72h) which returns stale data. We must SET it, not clear it.
-  // License validation removed from Lite WP.org build.
+  if (function_exists('langa_tools_client_license_is_valid')) {
+    langa_tools_client_license_is_valid(true);
+  }
 
   // Clean up any legacy transient keys
   $site_key = (string) get_option(LANGA_TOOLS_OPTION_SITE_KEY, '');
@@ -135,7 +143,12 @@ function langa_tools_client_handle_save_module() {
       if ($r > 40) $r = 40;
       $ms_out['radius'] = $r;
 
-      // Custom CSS removed from Lite WP.org build.
+      // Custom CSS (Maintenance only)
+      $css = isset($ms_raw['custom_css']) ? (string) $ms_raw['custom_css'] : (string) ($ms_prev['custom_css'] ?? '');
+      $css = wp_strip_all_tags( wp_unslash($css) );
+      $css = str_replace(array("\0"), '', $css);
+      if (strlen($css) > 12000) $css = substr($css, 0, 12000);
+      $ms_out['custom_css'] = trim($css);
 
       // Remove legacy card_bg if present
       if (isset($ms_out['card_bg'])) unset($ms_out['card_bg']);
@@ -154,8 +167,8 @@ function langa_tools_client_handle_save_module() {
       $p['bg_color'] = sanitize_hex_color($p_raw['bg_color'] ?? ($p_prev['bg_color'] ?? '#0b0b0c'));
       if ($p['bg_color'] === '') $p['bg_color'] = '#0b0b0c';
 
-      $op_raw = isset($p_raw['bg_opacity']) ? sanitize_text_field((string)$p_raw['bg_opacity']) : (string)($p_prev['bg_opacity'] ?? '0.96');
-      $op_raw = str_replace(',', '.', $op_raw);
+      $op_raw = isset($p_raw['bg_opacity']) ? (string)$p_raw['bg_opacity'] : (string)($p_prev['bg_opacity'] ?? '0.96');
+      $op_raw = str_replace(',', '.', wp_unslash($op_raw));
       $op = (float)$op_raw;
       if ($op < 0) $op = 0;
       if ($op > 1) $op = 1;
@@ -168,8 +181,8 @@ function langa_tools_client_handle_save_module() {
       if ($w > 260) $w = 260;
       $p['logo_width'] = $w; 
 
-      $td_raw = isset($p_raw['transition_ms']) ? sanitize_text_field((string)$p_raw['transition_ms']) : (string)($p_prev['transition_ms'] ?? '520');
-      $td_raw = preg_replace('/[^0-9]/', '', $td_raw);
+      $td_raw = isset($p_raw['transition_ms']) ? (string)$p_raw['transition_ms'] : (string)($p_prev['transition_ms'] ?? '520');
+      $td_raw = preg_replace('/[^0-9]/', '', wp_unslash($td_raw));
       $td = (int)$td_raw;
       if ($td < 0) $td = 0;
       if ($td > 60000) $td = 60000;
@@ -178,7 +191,8 @@ function langa_tools_client_handle_save_module() {
       $p['first_visit_session'] = !empty($p_raw['first_visit_session']) ? 1 : 0;
 
       $ex = (string)($p_raw['exclude_pages'] ?? ($p_prev['exclude_pages'] ?? ''));
-      $ex = sanitize_textarea_field($ex);
+      $ex = wp_unslash($ex);
+      $ex = str_replace("\0", '', $ex);
       if (strlen($ex) > 4000) $ex = substr($ex, 0, 4000);
       $p['exclude_pages'] = trim($ex);
 
@@ -434,7 +448,17 @@ function langa_tools_client_handle_save_module() {
         }
       }
 
-      $custom = array();
+      // Custom
+      $custom = array('start_md' => '', 'end_md' => '', 'css' => '', 'js' => '');
+      if (!empty($_POST['effects_custom']) && is_array($_POST['effects_custom'])) {
+        $c = wp_unslash($_POST['effects_custom']);
+        if (is_array($c)) {
+          $custom['start_md'] = sanitize_text_field($c['start_md'] ?? '');
+          $custom['end_md']   = sanitize_text_field($c['end_md'] ?? '');
+          $custom['css']      = wp_strip_all_tags( str_replace("\0", '', (string)($c['css'] ?? '')) );
+          $custom['js']       = wp_strip_all_tags( str_replace("\0", '', (string)($c['js'] ?? '')) );
+        }
+      }
 
       if (!function_exists('langa_tools_client_get_effects_option')) {
         require_once LANGA_TOOLS_CLIENT_PATH . 'includes/ui-ux/effects/options.php';
@@ -468,7 +492,11 @@ function langa_tools_client_handle_save_module() {
       // Radius (single value)
       $vs_out['radius'] = isset($vs_raw['radius']) ? max(0, min(40, (int)$vs_raw['radius'])) : (int)($vs_prev['radius'] ?? 5);
 
-      // Custom CSS removed from Lite WP.org build.
+      // Custom CSS (scoped to Visual Sitemap)
+      $css = isset($vs_raw['custom_css']) ? (string)$vs_raw['custom_css'] : (string)($vs_prev['custom_css'] ?? '');
+      $css = wp_strip_all_tags( str_replace("\0", '', $css) );
+      if (strlen($css) > 20000) $css = substr($css, 0, 20000);
+      $vs_out['custom_css'] = $css;
 
 $sort_by = sanitize_key($vs_raw['sort_by'] ?? ($vs_prev['sort_by'] ?? 'menu_order'));
       if (!in_array($sort_by, array('menu_order','title','date'), true)) $sort_by = 'menu_order';
@@ -501,6 +529,57 @@ $sort_by = sanitize_key($vs_raw['sort_by'] ?? ($vs_prev['sort_by'] ?? 'menu_orde
   // -------------------------
   // SAVE: AI
   // -------------------------
+  if ($module === 'ai') {
+    $raw  = isset($_POST['ai']) && is_array($_POST['ai']) ? wp_unslash($_POST['ai']) : array();
+    $prev = get_option('langa_tools_ai_settings', array());
+    if (!is_array($prev)) $prev = array();
+
+    $out = $prev;
+
+    $out['default_text_provider']  = sanitize_key($raw['default_text_provider'] ?? ($prev['default_text_provider'] ?? 'openai'));
+    $out['default_image_provider'] = sanitize_key($raw['default_image_provider'] ?? ($prev['default_image_provider'] ?? 'openai'));
+    $out['default_language']       = sanitize_text_field($raw['default_language'] ?? ($prev['default_language'] ?? 'it'));
+    $out['default_tone']           = sanitize_text_field($raw['default_tone'] ?? ($prev['default_tone'] ?? 'professional'));
+
+    $out['features'] = array(
+      'text_generation'   => !empty($raw['features']['text_generation']) ? 1 : 0,
+      'auto_categorize'   => !empty($raw['features']['auto_categorize']) ? 1 : 0,
+      'auto_internallink' => !empty($raw['features']['auto_internallink']) ? 1 : 0,
+      'social_snippets'   => !empty($raw['features']['social_snippets']) ? 1 : 0,
+      'image_generation'  => !empty($raw['features']['image_generation']) ? 1 : 0,
+      'auto_seo'          => !empty($raw['features']['auto_seo']) ? 1 : 0,
+      'auto_translate'    => !empty($raw['features']['auto_translate']) ? 1 : 0,
+    );
+
+    $openai_key = trim((string)($raw['openai_key'] ?? ''));
+    if ($openai_key === 'REMOVE') {
+      $out['openai_key'] = '';
+    } elseif ($openai_key !== '') {
+      $out['openai_key'] = sanitize_text_field($openai_key);
+    }
+
+    $anthropic_key = trim((string)($raw['anthropic_key'] ?? ''));
+    if ($anthropic_key === 'REMOVE') {
+      $out['anthropic_key'] = '';
+    } elseif ($anthropic_key !== '') {
+      $out['anthropic_key'] = sanitize_text_field($anthropic_key);
+    }
+
+    $google_key = trim((string)($raw['google_key'] ?? ''));
+    if ($google_key === 'REMOVE') {
+      $out['google_key'] = '';
+    } elseif ($google_key !== '') {
+      $out['google_key'] = sanitize_text_field($google_key);
+    }
+
+    if (isset($raw['openai_model'])) {
+      $out['openai_model'] = sanitize_text_field((string)$raw['openai_model']);
+    }
+
+    $out['review_required'] = !empty($raw['review_required']) ? 1 : 0;
+
+    update_option('langa_tools_ai_settings', $out);
+  }
 
 
   
@@ -508,6 +587,148 @@ $sort_by = sanitize_key($vs_raw['sort_by'] ?? ($vs_prev['sort_by'] ?? 'menu_orde
   // SAVE: FORMS (UI-first)
   // - SAFE: salva per TAB e non resetta le altre
   // -------------------------
+  if ($module === 'forms') {
+    $raw  = isset($_POST['forms']) && is_array($_POST['forms']) ? wp_unslash($_POST['forms']) : array();
+    $prev = get_option('langa_tools_forms_settings', array());
+    if (!is_array($prev)) $prev = array();
+
+    $out = $prev;
+
+    $tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : 'overview';
+    if ($tab === '') $tab = 'overview';
+
+    // Ensure structure
+    if (!isset($out['presets']) || !is_array($out['presets'])) $out['presets'] = array();
+    for ($i = 1; $i <= 10; $i++) {
+      $k = (string)$i;
+      if (!isset($out['presets'][$k]) || !is_array($out['presets'][$k])) $out['presets'][$k] = array();
+      // Back-compat: old title
+      if (isset($out['presets'][$k]['title']) && (string)$out['presets'][$k]['title'] !== '' && empty($out['presets'][$k]['title_custom'])) {
+        $out['presets'][$k]['title_custom'] = sanitize_text_field((string)$out['presets'][$k]['title']);
+      }
+      if (isset($out['presets'][$k]['title'])) unset($out['presets'][$k]['title']);
+
+      if (!isset($out['presets'][$k]['title_key'])) $out['presets'][$k]['title_key'] = '';
+      if (!isset($out['presets'][$k]['title_custom'])) $out['presets'][$k]['title_custom'] = '';
+      if (!isset($out['presets'][$k]['disclaimer_html'])) $out['presets'][$k]['disclaimer_html'] = '';
+
+      // Buttons are fixed in runtime
+      if (isset($out['presets'][$k]['button'])) unset($out['presets'][$k]['button']);
+      if (isset($out['presets'][$k]['fields_json'])) unset($out['presets'][$k]['fields_json']);
+    }
+
+    if (!isset($out['options']) || !is_array($out['options'])) $out['options'] = array();
+    $opt_keys = array('company_type','sector','micro_sector','product_interest','already_have');
+    foreach ($opt_keys as $ok) {
+      if (!isset($out['options'][$ok])) $out['options'][$ok] = '';
+    }
+
+    if (!isset($out['style']) || !is_array($out['style'])) $out['style'] = array();
+    if (!isset($out['extra']) || !is_array($out['extra'])) $out['extra'] = array();
+
+    // OVERVIEW
+    if ($tab === 'overview') {
+      $out['enabled'] = !empty($raw['enabled']) ? 1 : 0;
+      // Per-form recipient (multi-email with comma)
+      $recip = isset($raw['recipient']) ? sanitize_text_field(trim((string)$raw['recipient'])) : '';
+      $out['recipient'] = $recip;
+    }
+
+    // PRESETS (title key + override + disclaimer)
+    if ($tab === 'presets') {
+      $prs = isset($raw['presets']) && is_array($raw['presets']) ? $raw['presets'] : array();
+      $allowed_keys = array('contact_us','quick_contact','request_info','fast_request','company_request','survey_request','quote_request');
+      for ($i = 1; $i <= 10; $i++) {
+        $k = (string)$i;
+        $row = isset($prs[$k]) && is_array($prs[$k]) ? $prs[$k] : array();
+        $tkey = sanitize_key((string)($row['title_key'] ?? ($out['presets'][$k]['title_key'] ?? '')));
+        if (!in_array($tkey, $allowed_keys, true)) $tkey = 'contact_us';
+        $out['presets'][$k]['title_key'] = $tkey;
+
+        $out['presets'][$k]['title_custom'] = sanitize_text_field((string)($row['title_custom'] ?? ($out['presets'][$k]['title_custom'] ?? '')));
+
+        $disc = isset($row['disclaimer_html']) ? str_replace("\r", '', (string)$row['disclaimer_html']) : (string)($out['presets'][$k]['disclaimer_html'] ?? '');
+        $out['presets'][$k]['disclaimer_html'] = wp_kses_post($disc);
+      }
+
+      // Back-compat: move old global disclaimer into presets (first save)
+      if (isset($out['extra']) && is_array($out['extra']) && !empty($out['extra']['disclaimer_html'])) {
+        $g = (string)$out['extra']['disclaimer_html'];
+        $all_empty = true;
+        for ($i=1;$i<=10;$i++) {
+          $kk=(string)$i;
+          if (!empty($out['presets'][$kk]['disclaimer_html'])) { $all_empty = false; break; }
+        }
+        if ($all_empty) {
+          for ($i=1;$i<=10;$i++) {
+            $kk=(string)$i;
+            $out['presets'][$kk]['disclaimer_html'] = wp_kses_post((string)$g);
+          }
+        }
+        unset($out['extra']['disclaimer_html']);
+      }
+    }
+
+    // SELECT OPTIONS
+    if ($tab === 'options') {
+      $opts = isset($raw['options']) && is_array($raw['options']) ? $raw['options'] : array();
+      foreach ($opt_keys as $ok) {
+        $val = isset($opts[$ok]) ? (string)$opts[$ok] : (string)($out['options'][$ok] ?? '');
+        $val = str_replace("\r", '', $val);
+        $out['options'][$ok] = sanitize_textarea_field($val);
+      }
+    }
+
+    // STYLE
+    if ($tab === 'style') {
+      $style = isset($raw['style']) && is_array($raw['style']) ? $raw['style'] : array();
+      $primary = isset($style['primary_color']) ? sanitize_hex_color((string)$style['primary_color']) : ($out['style']['primary_color'] ?? '#a8a29e');
+      if ($primary === '') $primary = '#a8a29e';
+
+      $header_bg = isset($style['header_bg']) ? sanitize_hex_color((string)$style['header_bg']) : ($out['style']['header_bg'] ?? '#fafaf9');
+      if ($header_bg === '') $header_bg = '#fafaf9';
+      $header_text = isset($style['header_text']) ? sanitize_hex_color((string)$style['header_text']) : ($out['style']['header_text'] ?? '#1c1917');
+      if ($header_text === '') $header_text = '#1c1917';
+      $body_bg = isset($style['body_bg']) ? sanitize_hex_color((string)$style['body_bg']) : ($out['style']['body_bg'] ?? '#f5f5f4');
+      if ($body_bg === '') $body_bg = '#f5f5f4';
+      $form_bg = isset($style['form_bg']) ? sanitize_hex_color((string)$style['form_bg']) : ($out['style']['form_bg'] ?? '#ffffff');
+      if ($form_bg === '') $form_bg = '#ffffff';
+      $form_text = isset($style['form_text']) ? sanitize_hex_color((string)$style['form_text']) : ($out['style']['form_text'] ?? '#1c1917');
+      if ($form_text === '') $form_text = '#1c1917';
+
+      $radius = isset($style['radius']) ? (int)$style['radius'] : (int)($out['style']['radius'] ?? 5);
+      if ($radius < 0) $radius = 0;
+      if ($radius > 40) $radius = 40;
+      $css = isset($style['custom_css']) ? wp_strip_all_tags(str_replace("\r", '', (string)$style['custom_css'])) : (string)($out['style']['custom_css'] ?? '');
+      $out['style'] = array(
+        'primary_color' => $primary,
+        'header_bg'     => $header_bg,
+        'header_text'   => $header_text,
+        'body_bg'       => $body_bg,
+        'form_bg'       => $form_bg,
+        'form_text'     => $form_text,
+        'radius'        => $radius,
+        'custom_css'    => $css,
+      );
+    }
+
+    // EXTRA
+    if ($tab === 'extra') {
+      $ex = isset($raw['extra']) && is_array($raw['extra']) ? $raw['extra'] : array();
+      $out['extra']['phone_enabled'] = !empty($ex['phone_enabled']) ? 1 : 0;
+      $out['extra']['phone_default_country'] = sanitize_text_field((string)($ex['phone_default_country'] ?? ($out['extra']['phone_default_country'] ?? 'IT')));
+      $allowed = isset($ex['phone_allowed_countries']) ? (string)$ex['phone_allowed_countries'] : (string)($out['extra']['phone_allowed_countries'] ?? '');
+      $allowed = strtoupper(preg_replace('/[^A-Z,\s]/', '', $allowed));
+      $allowed = preg_replace('/\s+/', '', $allowed);
+      $out['extra']['phone_allowed_countries'] = $allowed;
+    }
+
+    // Legacy clean: delivery/mail removed (now global Settings → Invio (Server))
+    if (isset($out['delivery'])) unset($out['delivery']);
+    if (isset($out['mail'])) unset($out['mail']);
+
+    update_option('langa_tools_forms_settings', $out, false);
+  }
 
 
 
@@ -516,11 +737,366 @@ $sort_by = sanitize_key($vs_raw['sort_by'] ?? ($vs_prev['sort_by'] ?? 'menu_orde
   // SAVE: CACHE (UI-only)
   // - salva per TAB e non resetta le altre
   // -------------------------
+  if ($module === 'cache') {
+    $raw  = isset($_POST['cache']) && is_array($_POST['cache']) ? wp_unslash($_POST['cache']) : array();
+    $prev = get_option('langa_tools_cache_settings', array());
+    if (!is_array($prev)) $prev = array();
+    $out = $prev;
+
+    $tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : 'overview';
+    if ($tab === '') $tab = 'overview';
+
+    if (!isset($out['cache']) || !is_array($out['cache'])) $out['cache'] = array();
+    if (!isset($out['file']) || !is_array($out['file'])) $out['file'] = array();
+    if (!isset($out['media']) || !is_array($out['media'])) $out['media'] = array();
+    if (!isset($out['preload']) || !is_array($out['preload'])) $out['preload'] = array();
+    if (!isset($out['advanced']) || !is_array($out['advanced'])) $out['advanced'] = array();
+
+    // ── Cache Pack: apply preset (from overview or legacy pack tab) ──
+    if (($tab === 'overview' || $tab === 'pack') && !empty($raw['apply_pack_btn']) && !empty($raw['apply_pack'])) {
+      $pack_key = sanitize_key((string)$raw['apply_pack']);
+      $pack_defs = array(
+        'blog'       => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>4),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>0),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+        'ecommerce'  => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>1),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>0),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+        'corporate'  => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>8),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>1),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+        'aggressive'  => array('cache'=>array('browser_headers'=>1,'browser_ttl_h'=>24),'file'=>array('remove_qs'=>1,'defer_js'=>1,'delay_js'=>1),'media'=>array('disable_emojis'=>1,'lazy_images'=>1,'lazy_iframes'=>1)),
+      );
+      if (isset($pack_defs[$pack_key])) {
+        $pd = $pack_defs[$pack_key];
+        foreach ($pd as $section => $vals) {
+          if (!isset($out[$section]) || !is_array($out[$section])) $out[$section] = array();
+          foreach ($vals as $k => $v) {
+            $out[$section][$k] = $v;
+          }
+        }
+        $out['pack'] = $pack_key;
+      }
+    }
+
+    if ($tab === 'overview') {
+      $out['enabled_ui'] = !empty($raw['enabled_ui']) ? 1 : 0;
+    }
+
+    // Unified settings tab (all cache/file/media/preload/advanced in one page)
+    if ($tab === 'settings' || $tab === 'cache' || $tab === 'file' || $tab === 'media' || $tab === 'preload' || $tab === 'advanced') {
+      // Cache section
+      if (isset($raw['cache']) && is_array($raw['cache'])) {
+        $c = $raw['cache'];
+        $out['cache']['browser_headers'] = !empty($c['browser_headers']) ? 1 : 0;
+        $out['cache']['browser_ttl_h']   = (int)($c['browser_ttl_h'] ?? ($out['cache']['browser_ttl_h'] ?? 1));
+        if ($out['cache']['browser_ttl_h'] < 0) $out['cache']['browser_ttl_h'] = 0;
+        if ($out['cache']['browser_ttl_h'] > 168) $out['cache']['browser_ttl_h'] = 168;
+      }
+      // File section
+      if (isset($raw['file']) && is_array($raw['file'])) {
+        $f = $raw['file'];
+        $out['file']['defer_js']   = !empty($f['defer_js']) ? 1 : 0;
+        $out['file']['delay_js']   = !empty($f['delay_js']) ? 1 : 0;
+        $out['file']['remove_qs']  = !empty($f['remove_qs']) ? 1 : 0;
+      }
+      // Media section
+      if (isset($raw['media']) && is_array($raw['media'])) {
+        $m = $raw['media'];
+        $out['media']['lazy_images']    = !empty($m['lazy_images']) ? 1 : 0;
+        $out['media']['lazy_iframes']   = !empty($m['lazy_iframes']) ? 1 : 0;
+        $out['media']['disable_emojis'] = !empty($m['disable_emojis']) ? 1 : 0;
+      }
+      // Preload section
+      if (isset($raw['preload']) && is_array($raw['preload'])) {
+        $p = $raw['preload'];
+        $out['preload']['dns_prefetch']  = sanitize_textarea_field((string)($p['dns_prefetch'] ?? ''));
+        $out['preload']['preconnect']    = sanitize_textarea_field((string)($p['preconnect'] ?? ''));
+      }
+      // Advanced section
+      if (isset($raw['advanced']) && is_array($raw['advanced'])) {
+        $a = $raw['advanced'];
+        $out['advanced']['purge_opcache'] = !empty($a['purge_opcache']) ? 1 : 0;
+      }
+    }
+
+    update_option('langa_tools_cache_settings', $out);
+  }
   // -------------------------
   // -------------------------
   // SAVE: LEGAL
   // -------------------------
 
+  if ($module === 'legal') {
+    $raw = isset($_POST['legal']) && is_array($_POST['legal']) ? wp_unslash($_POST['legal']) : array();
+    $prev = get_option('langa_tools_legal_settings', array());
+    if (!is_array($prev)) $prev = array();
+
+    // Use canonical defaults (single source of truth)
+    $defaults = function_exists('langa_tools_client_legal_defaults') ? langa_tools_client_legal_defaults() : array(
+      'banner_enabled' => 1,
+      'show_links' => 1,
+      'show_for_logged_in' => 0,
+      'position' => 'bottom-right',
+      'cookie_name' => 'langa_consent',
+      'cookie_days' => 180,
+
+      'color_bg' => '#ffffff',
+      'color_panel' => '#f5f5f4',
+      'color_text' => '#1c1917',
+      'color_btn_bg' => '#d6d3d1',
+      'color_btn_text' => '#1c1917',
+      'color_link' => '#57534e',
+      'radius' => 5,
+
+      'privacy_content' => '',
+      'terms_content' => '',
+      'cookie_content' => '',
+      'privacy_page_id' => 0,
+      'terms_page_id' => 0,
+      'cookie_page_id' => 0,
+    );
+    $prev = wp_parse_args($prev, $defaults);
+
+    $current_tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : 'overview';
+    if ($current_tab === '') $current_tab = 'overview';
+
+    $out = $prev;
+
+    // Overview tab
+    if ($current_tab === 'overview') {
+      $out['banner_enabled'] = !empty($raw['banner_enabled']) ? 1 : 0;
+      $out['show_links'] = !empty($raw['show_links']) ? 1 : 0;
+      $out['show_for_logged_in'] = !empty($raw['show_for_logged_in']) ? 1 : 0;
+
+      // Sync flags
+      $out['sync_wp_privacy'] = !empty($raw['sync_wp_privacy']) ? 1 : 0;
+      $out['sync_wc_terms']   = !empty($raw['sync_wc_terms']) ? 1 : 0;
+
+      // Site type + enabled flags (wizard)
+      if (isset($raw['site_type'])) {
+        $st = sanitize_key((string)$raw['site_type']);
+        if (in_array($st, array('vetrina','servizi','ecommerce'), true)) {
+          $out['site_type'] = $st;
+        }
+      }
+      $out['terms_enabled'] = !empty($raw['terms_enabled']) ? 1 : 0;
+      $out['impressum_enabled'] = !empty($raw['impressum_enabled']) ? 1 : 0;
+
+      // Trash pages that were just disabled by wizard
+      $trash_map = array(
+        'terms_enabled'    => 'terms_page_id',
+        'impressum_enabled'=> 'impressum_page_id',
+      );
+      foreach ($trash_map as $flag_key => $page_key) {
+        $was_on = !empty($prev[$flag_key]);
+        $now_on = !empty($out[$flag_key]);
+        if ($was_on && !$now_on) {
+          $pid = (int)($prev[$page_key] ?? 0);
+          if ($pid > 0 && get_post_status($pid)) {
+            wp_trash_post($pid);
+            $out[$page_key] = 0;
+          }
+        }
+      }
+
+      if (isset($raw['position'])) {
+        $pos = sanitize_key((string)$raw['position']);
+        if (in_array($pos, array('bottom-right','bottom-left','bottom'), true)) {
+          $out['position'] = $pos;
+        }
+      }
+
+      if (isset($raw['cookie_name'])) {
+        $out['cookie_name'] = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$raw['cookie_name']);
+      }
+      if (isset($raw['cookie_days'])) {
+        $out['cookie_days'] = max(1, min(3650, (int)$raw['cookie_days']));
+      }
+    }
+
+    // Pack tab — site type + enabled flags (same fields as old overview wizard)
+    if ($current_tab === 'pack') {
+      if (isset($raw['site_type'])) {
+        $st = sanitize_key((string)$raw['site_type']);
+        if (in_array($st, array('vetrina','servizi','ecommerce'), true)) {
+          $out['site_type'] = $st;
+        }
+      }
+      $out['terms_enabled'] = !empty($raw['terms_enabled']) ? 1 : 0;
+      $out['impressum_enabled'] = !empty($raw['impressum_enabled']) ? 1 : 0;
+
+      // Trash pages that were just disabled
+      $trash_map = array(
+        'terms_enabled'    => 'terms_page_id',
+        'impressum_enabled'=> 'impressum_page_id',
+      );
+      foreach ($trash_map as $flag_key => $page_key) {
+        $was_on = !empty($prev[$flag_key]);
+        $now_on = !empty($out[$flag_key]);
+        if ($was_on && !$now_on) {
+          $pid = (int)($prev[$page_key] ?? 0);
+          if ($pid > 0 && get_post_status($pid)) {
+            wp_trash_post($pid);
+            $out[$page_key] = 0;
+          }
+        }
+      }
+    }
+
+    // Banner tab (only colors)
+    if ($current_tab === 'banner') {
+      $hex_keep = function($val, $fallback) {
+        $c = sanitize_hex_color((string)$val);
+        return $c ? $c : $fallback;
+      };
+
+      foreach (array('color_bg','color_panel','color_text','color_btn_bg','color_btn_text','color_link') as $k) {
+        if (isset($raw[$k])) {
+          $out[$k] = $hex_keep($raw[$k], (string)($prev[$k] ?? ''));
+        }
+      }
+      if (isset($raw['radius'])) {
+        $out['radius'] = max(0, min(80, (int)$raw['radius']));
+      }
+    }
+
+    // Pages tab → now split into per-document tabs: privacy, terms, cookie
+    // Each only saves its own content + page_id
+    $update_content = 0;
+    $force_slugs = 0;
+    $doc_tab_map = array(
+      'privacy'   => array('content' => 'privacy_content', 'page' => 'privacy_page_id'),
+      'terms'     => array('content' => 'terms_content',   'page' => 'terms_page_id'),
+      'cookie'    => array('content' => 'cookie_content',  'page' => 'cookie_page_id'),
+      'impressum' => array('content' => 'impressum_content','page' => 'impressum_page_id'),
+    );
+    if (isset($doc_tab_map[$current_tab])) {
+      $dtm = $doc_tab_map[$current_tab];
+      // Save only THIS document's content
+      if (isset($raw[$dtm['content']])) {
+        $out[$dtm['content']] = wp_kses_post((string)$raw[$dtm['content']]);
+      }
+      // Save only THIS document's page binding
+      if (isset($raw[$dtm['page']])) {
+        $id = (int)$raw[$dtm['page']];
+        $out[$dtm['page']] = ($id > 0 && get_post_status($id)) ? $id : 0;
+      }
+      $update_content = !empty($raw['update_content']) ? 1 : 0;
+      $force_slugs = !empty($raw['force_slugs']) ? 1 : 0;
+    }
+
+    // Legacy compat: "pages" tab (if somehow still posted)
+    if ($current_tab === 'pages') {
+      foreach (array('privacy_content','terms_content','cookie_content','impressum_content') as $k) {
+        if (isset($raw[$k])) $out[$k] = wp_kses_post((string)$raw[$k]);
+      }
+      $update_content = !empty($raw['update_content']) ? 1 : 0;
+      $force_slugs = !empty($raw['force_slugs']) ? 1 : 0;
+      foreach (array('privacy_page_id','terms_page_id','cookie_page_id','impressum_page_id') as $pidk) {
+        if (isset($raw[$pidk])) {
+          $id = (int)$raw[$pidk];
+          $out[$pidk] = ($id > 0 && get_post_status($id)) ? $id : 0;
+        }
+      }
+    }
+
+    // Force flag stored (used by generator)
+    $is_doc_tab = isset($doc_tab_map[$current_tab]) || $current_tab === 'pages';
+    if ($is_doc_tab) {
+      $out['force_slugs'] = (int)$force_slugs;
+    } else {
+      if (isset($prev['force_slugs'])) $out['force_slugs'] = (int)$prev['force_slugs'];
+    }
+
+    // Keep page IDs from previous option unless changed in a document tab
+    if (!$is_doc_tab) {
+      foreach (array('privacy_page_id','terms_page_id','cookie_page_id','impressum_page_id') as $pidk) {
+        if (isset($prev[$pidk])) $out[$pidk] = (int)$prev[$pidk];
+      }
+    }
+    // For per-document tabs, preserve OTHER documents' page IDs
+    if (isset($doc_tab_map[$current_tab])) {
+      foreach (array('privacy_page_id','terms_page_id','cookie_page_id','impressum_page_id') as $pidk) {
+        if ($pidk !== $doc_tab_map[$current_tab]['page'] && isset($prev[$pidk])) {
+          $out[$pidk] = (int)$prev[$pidk];
+        }
+      }
+      // Also preserve OTHER documents' content
+      foreach (array('privacy_content','terms_content','cookie_content','impressum_content') as $ck) {
+        if ($ck !== $doc_tab_map[$current_tab]['content'] && isset($prev[$ck])) {
+          $out[$ck] = $prev[$ck];
+        }
+      }
+    }
+
+    // Preserve enabled flags + site_type when NOT on overview or pack tab
+    if ($current_tab !== 'overview' && $current_tab !== 'pack') {
+      foreach (array('terms_enabled','impressum_enabled','site_type') as $ek) {
+        if (isset($prev[$ek])) $out[$ek] = $prev[$ek];
+      }
+    }
+
+    update_option('langa_tools_legal_settings', $out, false);
+
+    // Apply sync immediately when bindings are changed
+    if ($is_doc_tab) {
+      if (!empty($out['sync_wp_privacy']) && !empty($out['privacy_page_id'])) {
+        update_option('wp_page_for_privacy_policy', (int)$out['privacy_page_id']);
+      }
+      if (!empty($out['sync_wc_terms']) && !empty($out['terms_page_id']) && function_exists('WC')) {
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- intentional WooCommerce core option integration
+        update_option('woocommerce_terms_page_id', (int)$out['terms_page_id']);
+      }
+    }
+
+    // If asked, (re)generate pages — always updates content + forces slug
+    // legal_generate_pages value = specific tab name (privacy|terms|cookie|impressum)
+    if ($is_doc_tab && !empty($_POST['legal_generate_pages'])) {
+      if (function_exists('langa_tools_client_legal_ensure_pages')) {
+        langa_tools_client_legal_ensure_pages(true, true);
+      }
+    }
+
+    // Wizard generate (overview OR pack tab) — resets content to GDPR defaults, generates pages, trashes disabled
+    if (($current_tab === 'overview' || $current_tab === 'pack') && !empty($_POST['legal_wizard_generate'])) {
+
+      // Auto-derive enabled flags from site_type if not explicitly set
+      $wiz_type = sanitize_key($out['site_type'] ?? '');
+      if ($wiz_type !== '' && empty($raw['terms_enabled']) && empty($raw['impressum_enabled'])) {
+        $out['terms_enabled']    = in_array($wiz_type, array('servizi','ecommerce'), true) ? 1 : 0;
+        $out['impressum_enabled']= ($wiz_type === 'ecommerce') ? 1 : 0;
+      }
+
+      // Reset all template content to defaults so ensure_pages uses fresh GDPR templates
+      $content_keys = array('privacy_content', 'cookie_content', 'terms_content', 'impressum_content');
+      $current_settings = get_option('langa_tools_legal_settings', array());
+      if (!is_array($current_settings)) $current_settings = array();
+      // Apply the enabled flags from the wizard form
+      $current_settings['terms_enabled']    = !empty($out['terms_enabled']) ? 1 : 0;
+      $current_settings['impressum_enabled']= !empty($out['impressum_enabled']) ? 1 : 0;
+      $current_settings['site_type']        = sanitize_key($out['site_type'] ?? '');
+      foreach ($content_keys as $ck) {
+        $current_settings[$ck] = ''; // empty = ensure_pages will use default_fn
+      }
+      update_option('langa_tools_legal_settings', $current_settings, false);
+
+      if (function_exists('langa_tools_client_legal_ensure_pages')) {
+        langa_tools_client_legal_ensure_pages(true, true);
+      }
+
+      // Trash pages that are no longer enabled
+      $optional_pages = array(
+        'terms_enabled'    => 'terms_page_id',
+        'impressum_enabled'=> 'impressum_page_id',
+      );
+      $refreshed = get_option('langa_tools_legal_settings', array());
+      if (!is_array($refreshed)) $refreshed = array();
+      foreach ($optional_pages as $flag_key => $page_key) {
+        $is_enabled = !empty($out[$flag_key]);
+        $pid = (int)($refreshed[$page_key] ?? 0);
+        if (!$is_enabled && $pid > 0 && get_post_status($pid)) {
+          wp_trash_post($pid);
+          $refreshed[$page_key] = 0;
+        }
+      }
+      update_option('langa_tools_legal_settings', $refreshed, false);
+    }
+  }
 
 
 
@@ -528,20 +1104,663 @@ $sort_by = sanitize_key($vs_raw['sort_by'] ?? ($vs_prev['sort_by'] ?? 'menu_orde
   // - salva per TAB (features/sitemap/titles/social/schema/advanced)
   // - NON resetta sezioni non presenti nel form (niente wipe)
   // -------------------------
+  if ($module === 'seo') {
+    $raw = isset($_POST['seo']) && is_array($_POST['seo']) ? wp_unslash($_POST['seo']) : array();
+    $seo = get_option('langa_tools_seo_settings', array());
+    if (!is_array($seo)) $seo = array();
+
+    $current_tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : 'features';
+    if ($current_tab === '') $current_tab = 'features';
+
+    // Ensure base containers exist
+    if (!isset($seo['features']) || !is_array($seo['features'])) $seo['features'] = array();
+    if (!isset($seo['turbo']) || !is_array($seo['turbo'])) $seo['turbo'] = array();
+    if (!isset($seo['sitemap']) || !is_array($seo['sitemap'])) $seo['sitemap'] = array();
+    if (!isset($seo['content']) || !is_array($seo['content'])) $seo['content'] = array();
+    if (!isset($seo['social']) || !is_array($seo['social'])) $seo['social'] = array();
+    if (!isset($seo['schema']) || !is_array($seo['schema'])) $seo['schema'] = array();
+    if (!isset($seo['advanced']) || !is_array($seo['advanced'])) $seo['advanced'] = array();
+
+    // Defaults (first run): base ON (ma sempre modificabile)
+    foreach (array('index_posts','index_pages','index_products','index_media') as $k) {
+      if (!array_key_exists($k, $seo['content'])) $seo['content'][$k] = 1;
+    }
+
+    // Registry keys (single source of truth)
+    $feature_registry = function_exists('langa_tools_client_subfeatures_registry') ? langa_tools_client_subfeatures_registry('seo') : array();
+    $feature_keys = array();
+    if (is_array($feature_registry) && isset($feature_registry['features']) && is_array($feature_registry['features'])) {
+      $feature_keys = array_keys($feature_registry['features']);
+    }
+    if (empty($feature_keys)) {
+      $feature_keys = array('xml_sitemap','robots_controls','titles_meta','opengraph','twitter_cards','canonical','schema','metabox','breadcrumbs','redirect_404_home','indexnow');
+    }
+
+
+
+    // === SEO PACK APPLY (global) ===
+    // Applies a preset across ALL SEO tabs by toggling features/content/sitemap/turbo.
+    // IMPORTANT: does NOT delete user inputs (titles/social/schema/canonical overrides). It only changes ON/OFF flags.
+    if (!empty($raw['apply_pack'])) {
+      // mode comes from POST if present (radio), otherwise current saved.
+      $mode = isset($raw['mode']) ? sanitize_key((string)$raw['mode']) : (isset($seo['mode']) ? sanitize_key((string)$seo['mode']) : 'light');
+      if ($mode === '') $mode = 'light';
+      
+      // Normalize legacy modes
+      if ($mode === 'top') $mode = 'turbo';
+      if ($mode === 'medium') $mode = 'standard';
+      if (!in_array($mode, array('light','standard','turbo','noindex'), true)) $mode = 'light';
+$seo['mode'] = $mode;
+
+      $set_features = function($arr) use (&$seo, $feature_keys) {
+        foreach ($feature_keys as $k) {
+          $k = sanitize_key($k);
+          if ($k === '') continue;
+          $seo['features'][$k] = !empty($arr[$k]) ? 1 : 0;
+        }
+      };
+
+      if ($mode === 'noindex') {
+        // TOTAL NOINDEX: block indexing + crawling. Content stays visible.
+        $seo['turbo']   = array('safe' => 0, 'aggressive_noindex' => 0, 'force_output' => 0);
+        $seo['content'] = array('index_posts' => 0, 'index_pages' => 0, 'index_products' => 0, 'index_media' => 0);
+        $set_features(array(
+          'robots_controls' => 1,
+          'metabox' => 0,
+          'breadcrumbs' => 0,
+          'titles_meta' => 0,
+          'canonical' => 0,
+          'schema' => 0,
+          'opengraph' => 0,
+          'twitter_cards' => 0,
+          'xml_sitemap' => 0,
+          'redirect_404_home' => 0,
+          'indexnow' => 0,
+        ));
+        $seo['sitemap'] = array('enabled' => 0);
+      } elseif ($mode === 'light') {
+        $seo['turbo']   = array('safe' => 0, 'aggressive_noindex' => 0, 'force_output' => 0);
+        $seo['content'] = array('index_posts' => 1, 'index_pages' => 1, 'index_products' => 1, 'index_media' => 1);
+        $set_features(array(
+          'xml_sitemap' => 1,
+          'robots_controls' => 1,
+          'titles_meta' => 1,
+          'canonical' => 1,
+          'schema' => 1,
+          'metabox' => 1,
+          'breadcrumbs' => 1,
+          'opengraph' => 0,
+          'twitter_cards' => 0,
+          'redirect_404_home' => 0,
+          'indexnow' => 0,
+        ));
+        $seo['sitemap'] = array(
+          'enabled' => 1,
+          'include_posts' => 1,
+          'include_pages' => 1,
+          'include_products' => 1,
+          'include_categories' => 1,
+          'include_tags' => 1,
+          'include_product_categories' => 1,
+          'include_product_tags' => 1,
+          'include_media' => 1,
+        );
+      } elseif ($mode === 'standard') {
+        $seo['turbo']   = array('safe' => 0, 'aggressive_noindex' => 0, 'force_output' => 0);
+        $seo['content'] = array('index_posts' => 1, 'index_pages' => 1, 'index_products' => 1, 'index_media' => 1);
+        $set_features(array(
+          'xml_sitemap' => 1,
+          'robots_controls' => 1,
+          'titles_meta' => 1,
+          'canonical' => 1,
+          'schema' => 1,
+          'metabox' => 1,
+          'breadcrumbs' => 1,
+          'opengraph' => 1,
+          'twitter_cards' => 1,
+          'redirect_404_home' => 0,
+          'indexnow' => 0,
+        ));
+        $seo['sitemap'] = array(
+          'enabled' => 1,
+          'include_posts' => 1,
+          'include_pages' => 1,
+          'include_products' => 1,
+          'include_categories' => 1,
+          'include_tags' => 1,
+          'include_product_categories' => 1,
+          'include_product_tags' => 1,
+          'include_media' => 1,
+        );
+      } else { // turbo
+
+        $seo['mode'] = 'turbo';
+        $seo['turbo']   = array('safe' => 1, 'aggressive_noindex' => 0, 'force_output' => 0);
+        $seo['content'] = array('index_posts' => 1, 'index_pages' => 1, 'index_products' => 1, 'index_media' => 1);
+        $set_features(array(
+          'xml_sitemap' => 1,
+          'robots_controls' => 1,
+          'titles_meta' => 1,
+          'canonical' => 1,
+          'schema' => 1,
+          'metabox' => 1,
+          'breadcrumbs' => 1,
+          'opengraph' => 1,
+          'twitter_cards' => 1,
+          'redirect_404_home' => 0,
+          'indexnow' => 1,
+        ));
+        $seo['sitemap'] = array(
+          'enabled' => 1,
+          'include_posts' => 1,
+          'include_pages' => 1,
+          'include_products' => 1,
+          'include_categories' => 1,
+          'include_tags' => 1,
+          'include_product_categories' => 1,
+          'include_product_tags' => 1,
+          'include_media' => 1,
+        );
+      }
+
+      delete_option('langa_tools_seo_rewrites_flushed');
+      delete_option('langa_tools_indexnow_rewrites_flushed');
+
+      update_option('langa_tools_seo_settings', $seo);
+      wp_redirect(add_query_arg(array('page' => 'langa-tools-client-seo', 'seo_saved' => '1', 'tab' => 'pack'), admin_url('admin.php')));
+      exit;
+    }
+    
+    // --- TAB: FEATURES
+    if ($current_tab === 'features') {
+      // Optional: save selected pack (does not apply).
+      if (isset($raw['mode'])) {
+        $seo['mode'] = sanitize_key((string)$raw['mode']);
+      }
+
+      // Indicizzazione contenuti: sempre deterministica (checkbox missing => OFF)
+      $posted_content = isset($raw['content']) && is_array($raw['content']) ? $raw['content'] : array();
+      foreach (array('index_posts','index_pages','index_products','index_media') as $k) {
+        $seo['content'][$k] = !empty($posted_content[$k]) ? 1 : 0;
+      }
+
+      // Feature toggles (core) in this tab
+      $posted_features = isset($raw['features']) && is_array($raw['features']) ? $raw['features'] : array();
+      foreach ($feature_keys as $k) {
+        $k = sanitize_key($k);
+        if ($k === '') continue;
+        if (in_array($k, array('xml_sitemap','indexnow','redirect_404_home','titles_meta','opengraph','twitter_cards','schema','canonical'), true)) continue;
+        $seo['features'][$k] = !empty($posted_features[$k]) ? 1 : 0;
+      }
+    }
+
+    // --- TAB: SITEMAP
+    if ($current_tab === 'sitemap') {
+      $posted_features = isset($raw['features']) && is_array($raw['features']) ? $raw['features'] : array();
+      $seo['features']['xml_sitemap'] = !empty($posted_features['xml_sitemap']) ? 1 : 0;
+
+      $posted_sitemap = isset($raw['sitemap']) && is_array($raw['sitemap']) ? $raw['sitemap'] : array();
+      $seo['sitemap']['enabled'] = !empty($seo['features']['xml_sitemap']) ? 1 : 0;
+      $seo['sitemap']['cache'] = !empty($posted_sitemap['cache']) ? 1 : 0;
+      $seo['sitemap']['split'] = !empty($posted_sitemap['split']) ? 1 : 0;
+      foreach (array('include_posts','include_pages','include_products','include_categories','include_tags','include_product_categories','include_product_tags','include_media') as $k) {
+        $seo['sitemap'][$k] = !empty($posted_sitemap[$k]) ? 1 : 0;
+      }
+
+      // force rewrite refresh (one-shot)
+      delete_option('langa_tools_seo_rewrites_flushed');
+    }
+
+    // --- TAB: TITLES
+    if ($current_tab === 'titles') {
+      $seo['separator'] = isset($raw['separator']) ? sanitize_text_field((string)$raw['separator']) : ($seo['separator'] ?? '—');
+      $seo['site_name'] = isset($raw['site_name']) ? sanitize_text_field((string)$raw['site_name']) : ($seo['site_name'] ?? '');
+
+      if (isset($raw['titles']) && is_array($raw['titles'])) {
+        if (!isset($seo['titles']) || !is_array($seo['titles'])) $seo['titles'] = array();
+        foreach (array('home_title','home_desc','default_title','default_desc') as $k) {
+          $seo['titles'][$k] = isset($raw['titles'][$k]) ? sanitize_text_field((string)$raw['titles'][$k]) : ($seo['titles'][$k] ?? '');
+        }
+      }
+
+      $posted_features = isset($raw['features']) && is_array($raw['features']) ? $raw['features'] : array();
+      $seo['features']['titles_meta'] = !empty($posted_features['titles_meta']) ? 1 : 0;
+    }
+
+    // --- TAB: SOCIAL
+    if ($current_tab === 'social') {
+      $posted_social = isset($raw['social']) && is_array($raw['social']) ? $raw['social'] : array();
+      $seo['social']['default_share_image'] = !empty($posted_social['default_share_image']) ? esc_url_raw((string)$posted_social['default_share_image']) : '';
+      $seo['social']['facebook_page']       = !empty($posted_social['facebook_page']) ? esc_url_raw((string)$posted_social['facebook_page']) : '';
+      $seo['social']['instagram']           = !empty($posted_social['instagram']) ? esc_url_raw((string)$posted_social['instagram']) : '';
+      $seo['social']['linkedin']            = !empty($posted_social['linkedin']) ? esc_url_raw((string)$posted_social['linkedin']) : '';
+      $seo['social']['youtube']             = !empty($posted_social['youtube']) ? esc_url_raw((string)$posted_social['youtube']) : '';
+
+      $seo['social']['twitter_site'] = isset($posted_social['twitter_site']) ? sanitize_text_field((string)$posted_social['twitter_site']) : '';
+      $card = isset($posted_social['twitter_card']) ? sanitize_key((string)$posted_social['twitter_card']) : 'summary_large_image';
+      if (!in_array($card, array('summary_large_image','summary'), true)) $card = 'summary_large_image';
+      $seo['social']['twitter_card'] = $card;
+
+      $posted_features = isset($raw['features']) && is_array($raw['features']) ? $raw['features'] : array();
+      $seo['features']['opengraph'] = !empty($posted_features['opengraph']) ? 1 : 0;
+      $seo['features']['twitter_cards'] = !empty($posted_features['twitter_cards']) ? 1 : 0;
+    }
+
+    // --- TAB: SCHEMA
+    if ($current_tab === 'schema') {
+      $posted_schema = isset($raw['schema']) && is_array($raw['schema']) ? $raw['schema'] : array();
+      $seo['schema']['type'] = isset($posted_schema['type']) ? sanitize_text_field((string)$posted_schema['type']) : ($seo['schema']['type'] ?? 'organization');
+      $seo['schema']['logo'] = isset($posted_schema['logo']) ? esc_url_raw((string)$posted_schema['logo']) : ($seo['schema']['logo'] ?? '');
+      $seo['schema']['sameas'] = isset($posted_schema['sameas']) ? sanitize_textarea_field((string)$posted_schema['sameas']) : ($seo['schema']['sameas'] ?? '');
+
+      $posted_features = isset($raw['features']) && is_array($raw['features']) ? $raw['features'] : array();
+      $seo['features']['schema'] = !empty($posted_features['schema']) ? 1 : 0;
+    }
+
+    // --- TAB: ADVANCED
+    if ($current_tab === 'advanced') {
+      $posted_features = isset($raw['features']) && is_array($raw['features']) ? $raw['features'] : array();
+      foreach (array('canonical','redirect_404_home','indexnow','robots_controls') as $k) {
+        $seo['features'][$k] = !empty($posted_features[$k]) ? 1 : 0;
+      }
+
+      $posted_adv = isset($raw['advanced']) && is_array($raw['advanced']) ? $raw['advanced'] : array();
+      $seo['advanced']['strip_params'] = isset($posted_adv['strip_params']) ? sanitize_text_field((string)$posted_adv['strip_params']) : ($seo['advanced']['strip_params'] ?? '');
+      $seo['advanced']['target_keywords'] = isset($posted_adv['target_keywords']) ? sanitize_textarea_field((string)$posted_adv['target_keywords']) : ($seo['advanced']['target_keywords'] ?? '');
+      $seo['advanced']['competitor_sites'] = isset($posted_adv['competitor_sites']) ? sanitize_textarea_field((string)$posted_adv['competitor_sites']) : ($seo['advanced']['competitor_sites'] ?? '');
+
+      // force rewrite refresh for IndexNow (one-shot)
+      delete_option('langa_tools_indexnow_rewrites_flushed');
+    }
+
+    // --- TAB: PACK (save selected mode without applying)
+    if ($current_tab === 'pack') {
+      if (isset($raw['mode'])) {
+        $m = sanitize_key((string)$raw['mode']);
+        if ($m === '') $m = 'light';
+        if ($m === 'top' || $m === 'turbo') $m = 'turbo';
+        if ($m === 'medium' || $m === 'standard') $m = 'standard';
+        if (!in_array($m, array('light','standard','turbo','noindex'), true)) $m = 'light';
+        $seo['mode'] = $m;
+      }
+    }
+
+
+    update_option('langa_tools_seo_settings', $seo);
+
+    wp_redirect(add_query_arg(array('page' => 'langa-tools-client-seo', 'seo_saved' => '1', 'tab' => $current_tab), admin_url('admin.php')));
+    exit;
+  }
 
 
 // -------------------------
   // SAVE: BC (Business Card)
   // -------------------------
+  if ($module === 'bc') {
+    // Ensure sanitizers exist
+    if (!function_exists('langa_bc_admin_sanitize_settings')) {
+      require_once LANGA_TOOLS_CLIENT_PATH . 'includes/bc/admin-save.php';
+    }
+
+    $existing = get_option('langa_tools_bc_settings', array());
+    if (!is_array($existing)) $existing = array();
+
+    $post_bc = isset($_POST['bc']) && is_array($_POST['bc']) ? map_deep(wp_unslash($_POST['bc']), 'sanitize_text_field') : array();
+
+    // The UI posts only one sub-tab at a time: main or staff
+    $scope = isset($_POST['lbc_admin_tab']) ? sanitize_key((string)$_POST['lbc_admin_tab']) : 'main';
+    if (!in_array($scope, array('main', 'staff', 'style'), true)) $scope = 'main';
+
+    $new_settings = langa_bc_admin_sanitize_settings($existing, $post_bc, ($scope === 'staff' ? 'staff' : 'main'));
+    update_option('langa_tools_bc_settings', $new_settings, false);
+
+    // Flush rewrites safely (one-shot)
+    update_option('langa_tools_bc_flush', 1);
+
+    wp_safe_redirect(add_query_arg(array(
+      'page'   => 'langa-tools-client-bc',
+      'saved'  => '1',
+      'tab' => $scope,
+    ), admin_url('admin.php')));
+    exit;
+  }
 // -------------------------
   // SAVE: EVENTS (ex-BRIDGE)
   // -------------------------
 
+  if ($module === 'bridge') {
+    // Module enable toggle
+    update_option('langa_tools_bridge_enabled', $enabled ? 1 : 0);
 
+    // Merge with previous settings (tab-safe: only overwrite fields present in current tab)
+    $prev_bridge = get_option('langa_tools_bridge_settings', array());
+    if (!is_array($prev_bridge)) $prev_bridge = array();
+
+    $bridge  = isset($_POST['bridge']) && is_array($_POST['bridge']) ? wp_unslash($_POST['bridge']) : array();
+    $events  = isset($_POST['bridge_events']) && is_array($_POST['bridge_events']) ? wp_unslash($_POST['bridge_events']) : array();
+    $sources = isset($_POST['bridge_sources']) && is_array($_POST['bridge_sources']) ? wp_unslash($_POST['bridge_sources']) : array();
+
+    $current_tab = isset($_POST['current_tab']) ? sanitize_key($_POST['current_tab']) : 'overview';
+
+    $out = $prev_bridge;
+
+    // Tracking tab: what to record
+    if ($current_tab === 'tracking') {
+      $out['events'] = array(
+        'forms'  => !empty($events['forms']) ? 1 : 0,
+        'e404'   => !empty($events['e404']) ? 1 : 0,
+        'perf'   => !empty($events['perf']) ? 1 : 0,
+        'logins' => !empty($events['logins']) ? 1 : 0,
+        'errors' => !empty($events['errors']) ? 1 : 0,
+        'orders' => !empty($events['orders']) ? 1 : 0,
+      );
+      $out['sources'] = array(
+        'langa_forms' => !empty($sources['langa_forms']) ? 1 : 0,
+        'cf7'         => !empty($sources['cf7']) ? 1 : 0,
+        'fluent'      => !empty($sources['fluent']) ? 1 : 0,
+      );
+    }
+
+    // Events tab: retention
+    if ($current_tab === 'events') {
+      $ret = isset($bridge['local_retention']) ? (int)$bridge['local_retention'] : 30;
+      $out['local_retention'] = max(1, min(365, $ret));
+    }
+
+    // Bridge tab: where to send + connection
+    if ($current_tab === 'bridge') {
+      $out['mode'] = (!empty($bridge['mode']) && $bridge['mode'] === 'remote') ? 'remote' : 'local';
+      $out['share_data'] = !empty($bridge['share_data']) ? 1 : 0;
+      $out['remote_url'] = !empty($bridge['remote_url']) ? esc_url_raw(trim($bridge['remote_url'])) : '';
+      $out['api_token'] = !empty($bridge['api_token']) ? sanitize_text_field(trim($bridge['api_token'])) : '';
+      $out['site_id']   = !empty($bridge['site_id']) ? sanitize_text_field(trim($bridge['site_id'])) : '';
+      $out['batch_size'] = isset($bridge['batch_size']) ? max(5, min(100, (int)$bridge['batch_size'])) : 25;
+      $out['batch_interval'] = isset($bridge['batch_interval']) ? max(60, min(3600, (int)$bridge['batch_interval'])) : 300;
+    }
+
+    update_option('langa_tools_bridge_settings', $out, false);
+
+    // ── Purge actions (events tab) ──
+    if (!empty($_POST['events_purge_old'])) {
+      if (!function_exists('langa_events_purge')) {
+        require_once LANGA_TOOLS_CLIENT_PATH . 'includes/bridge/events-local.php';
+      }
+      $days = isset($out['local_retention']) ? (int)$out['local_retention'] : 30;
+      langa_events_purge($days);
+    }
+    if (!empty($_POST['events_purge_all'])) {
+      if (!function_exists('langa_events_purge_all')) {
+        require_once LANGA_TOOLS_CLIENT_PATH . 'includes/bridge/events-local.php';
+      }
+      langa_events_purge_all();
+    }
+
+    // ── Send test event (bridge tab) ──
+    if (!empty($_POST['bridge_send_test'])) {
+      $test_event = array(
+        'site_url'   => home_url(),
+        'event_type' => 'connectivity_test',
+        'mode'       => 'test',
+        'ref'        => 'bridge_ui',
+        'ts'         => time(),
+        'nonce'      => wp_generate_password(12, false, false),
+      );
+
+      // Also log locally
+      if (!function_exists('langa_events_log')) {
+        require_once LANGA_TOOLS_CLIENT_PATH . 'includes/bridge/events-local.php';
+      }
+      langa_events_log('test', 'manual', 'Connectivity test (bridge UI)', $test_event, 'info');
+
+      $test_status = 'fail';
+      if (class_exists('Langa_Tools_Client_API')) {
+        $test_ok = Langa_Tools_Client_API::send_event($test_event);
+        if ($test_ok) {
+          $test_status = 'ok';
+        } else {
+          $server = defined('LANGA_TOOLS_FIXED_SERVER_URL') ? rtrim(LANGA_TOOLS_FIXED_SERVER_URL, '/') : '';
+          $sk = (string)get_option(LANGA_TOOLS_OPTION_SITE_KEY, '');
+          $sc = (string)get_option(LANGA_TOOLS_OPTION_SECRET, '');
+          if ($server && $sk && $sc) {
+            $payload = wp_json_encode($test_event);
+            $sig = Langa_Tools_Client_Auth::sign($payload, $sc);
+            $resp = wp_remote_post($server . '/wp-json/langa-tools-server/v1/events/log-event', array(
+              'timeout' => 12,
+              'body' => array('site_key' => $sk, 'payload' => $payload, 'signature' => $sig),
+            ));
+            if (!is_wp_error($resp)) {
+              $body = json_decode(wp_remote_retrieve_body($resp), true);
+              if (is_array($body) && isset($body['error']) && in_array((string)$body['error'], array('events_gateway_disabled','events_disabled','gateway_disabled'), true)) {
+                $test_status = 'warn';
+              }
+            }
+          }
+        }
+      }
+      set_transient('langa_bridge_test_result', array('status' => $test_status, 'ts' => time()), 30);
+    }
+  }
+
+  if ($module === 'safer') {
+    $raw  = isset($_POST['safer']) && is_array($_POST['safer']) ? wp_unslash($_POST['safer']) : array();
+    $prev = get_option('langa_tools_safer_settings', array());
+    if (!is_array($prev)) $prev = array();
+
+    // Save per-tab (do NOT reset other tabs).
+    $out = $prev;
+
+    $current_tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : 'overview';
+    if ($current_tab === '') $current_tab = 'overview';
+
+    $b = function($key) use ($raw) {
+      return !empty($raw[$key]) ? 1 : 0;
+    };
+
+    // ── Safer Pack: apply preset ──
+    if ($current_tab === 'overview' && !empty($raw['apply_pack_btn'])) {
+      $pack_key = isset($raw['apply_pack']) ? sanitize_key((string)$raw['apply_pack']) : '';
+      $safer_packs = array(
+        'basic' => array('hide_wp_version'=>1,'hide_wp_fingerprints'=>1,'disable_xmlrpc'=>1,'block_author_enum'=>1,'disable_file_editor'=>0,'force_https_admin'=>0,'disable_rest_guests'=>0,'htaccess_hardening'=>0,'door_only_access'=>0,'protezione_2_0'=>0),
+        'business' => array('hide_wp_version'=>1,'hide_wp_fingerprints'=>1,'disable_xmlrpc'=>1,'block_author_enum'=>1,'disable_file_editor'=>1,'force_https_admin'=>1,'disable_rest_guests'=>0,'htaccess_hardening'=>0,'door_only_access'=>0,'protezione_2_0'=>0),
+        'fortress' => array('hide_wp_version'=>1,'hide_wp_fingerprints'=>1,'disable_xmlrpc'=>1,'block_author_enum'=>1,'disable_file_editor'=>1,'force_https_admin'=>1,'disable_rest_guests'=>0,'htaccess_hardening'=>1,'door_only_access'=>1,'protezione_2_0'=>1),
+      );
+      if (isset($safer_packs[$pack_key])) {
+        $was_ghost = !empty($prev['protezione_2_0']) || !empty($prev['htaccess_hardening']);
+        foreach ($safer_packs[$pack_key] as $k => $v) {
+          $out[$k] = $v;
+        }
+        $out['pack'] = $pack_key;
+        // Safety: if downgrading from Ghost/Fortress, force htaccess cleanup immediately
+        $now_ghost = !empty($out['htaccess_hardening']);
+        if ($was_ghost && !$now_ghost && function_exists('langa_tools_client_safer_update_root_htaccess')) {
+          @langa_tools_client_safer_update_root_htaccess(false);
+        }
+      }
+    }
+
+    // OVERVIEW — pack apply only
+    // (pack handler above takes care of everything)
+
+    // HARDENING
+    if ($current_tab === 'hardening') {
+      $out['disable_xmlrpc']       = $b('disable_xmlrpc');
+      $out['disable_file_editor']  = $b('disable_file_editor');
+      $out['block_author_enum']    = $b('block_author_enum');
+      $out['hide_wp_version']      = $b('hide_wp_version');
+      $out['hide_wp_fingerprints'] = $b('hide_wp_fingerprints');
+      $out['force_https_admin']    = $b('force_https_admin');
+      $out['disable_rest_guests']  = $b('disable_rest_guests');
+    }
+
+    // GHOST MODE tab (htaccess + door + ghost + ip allowlist)
+    if ($current_tab === 'ghost' || $current_tab === 'access') {
+      $out['htaccess_hardening'] = $b('htaccess_hardening');
+      $out['protezione_2_0']     = $b('protezione_2_0');
+      $out['door_only_access']   = $b('door_only_access');
+      $out['protect_wp_admin']   = $b('protect_wp_admin');
+      $out['protect_wp_login']   = $b('protect_wp_login');
+      $out['allowlist_ips']      = isset($raw['allowlist_ips']) ? sanitize_textarea_field((string)$raw['allowlist_ips']) : ($prev['allowlist_ips'] ?? '');
+
+      if (isset($_POST['safer_login_slug'])) {
+        $new_slug = sanitize_title(wp_unslash($_POST['safer_login_slug']));
+        $new_slug = preg_replace('/[^a-z0-9\-]/', '', $new_slug);
+        if ($new_slug === '') $new_slug = 'langa-door';
+        $reserved = array('wp-admin','wp-login','wp-content','wp-includes','wp-json','feed','sitemap','robots','favicon');
+        if (in_array($new_slug, $reserved, true)) $new_slug = 'langa-door';
+        $slugs = function_exists('langa_tools_client_safer_get_rewrite_slugs') ? langa_tools_client_safer_get_rewrite_slugs() : array();
+        if (is_array($slugs) && (string)($slugs['login'] ?? '') !== $new_slug) {
+          $slugs['login'] = $new_slug;
+          update_option('langa_tools_safer_slugs', $slugs, false);
+        }
+      }
+    }
+
+    // Safety gates for features that require htaccess hardening.
+    $ht = !empty($out['htaccess_hardening']) ? 1 : 0;
+
+    if (!$ht) {
+      // Ghost Mode requires htaccess (asset URL rewriting breaks without it)
+      if (!empty($out['protezione_2_0'])) {
+        $out['protezione_2_0'] = 0;
+        update_option('langa_tools_safer_notice_ghost_needs_htaccess', 1, false);
+      } else {
+        delete_option('langa_tools_safer_notice_ghost_needs_htaccess');
+      }
+      // NOTE: door_only_access does NOT require htaccess — it works via PHP routing (module.php).
+} else {
+      delete_option('langa_tools_safer_notice_ghost_needs_htaccess');
+    }
+
+    update_option('langa_tools_safer_settings', $out, false);
+
+    // Keep rewrite slugs & plugin map updated when htaccess hardening is enabled.
+    if (!empty($out['htaccess_hardening']) && function_exists('langa_tools_client_safer_refresh_plugin_map')) {
+      langa_tools_client_safer_refresh_plugin_map();
+    }
+
+    // Write/remove .htaccess block depending on toggle.
+    if (function_exists('langa_tools_client_safer_update_root_htaccess')) {
+      $res1 = langa_tools_client_safer_update_root_htaccess(!empty($out['htaccess_hardening']));
+      update_option('langa_tools_safer_last_htaccess', $res1, false);
+    }
+    // NOTE: langa_tools_client_safer_update_uploads_htaccess was removed (dead code — function never existed).
+
+    if (!empty($_POST['safer_rollback_htaccess'])) {
+      if (function_exists('langa_tools_client_safer_rollback_root_htaccess')) {
+        $rb = langa_tools_client_safer_rollback_root_htaccess();
+        update_option('langa_tools_safer_last_htaccess', $rb, false);
+      }
+    }
+  }
 
   // -------------------------
   // SAVE: POPUP
   // -------------------------
+  if ($module === 'popup') {
+    $raw  = isset($_POST['popup']) && is_array($_POST['popup']) ? wp_unslash($_POST['popup']) : array();
+    $prev = get_option('langa_tools_popup_settings', array());
+    if (!is_array($prev)) $prev = array();
+    $out = $prev;
+    if (!isset($out['popups']) || !is_array($out['popups'])) $out['popups'] = array();
+    if (!isset($out['next_id'])) $out['next_id'] = 1;
+
+    $tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : 'overview';
+
+    // ── Edit / Create popup (now includes per-popup auto_open) ──
+    if ($tab === 'edit') {
+      $edit = isset($raw['edit']) && is_array($raw['edit']) ? $raw['edit'] : array();
+      $popup_id = sanitize_key($edit['id'] ?? 'new');
+
+      $ao_raw = isset($edit['auto_open']) && is_array($edit['auto_open']) ? $edit['auto_open'] : array();
+
+      $popup_data = array(
+        'title'         => sanitize_text_field($edit['title'] ?? ''),
+        'content'       => wp_kses_post($edit['content'] ?? ''),
+        'status'        => in_array($edit['status'] ?? '', array('active','draft'), true) ? $edit['status'] : 'draft',
+        'width'         => max(200, min(2000, (int)($edit['width'] ?? 500))),
+        'max_width'     => max(50, min(100, (int)($edit['max_width'] ?? 90))),
+        'position'      => in_array($edit['position'] ?? '', array('center','top','bottom'), true) ? $edit['position'] : 'center',
+        'show_close'    => !empty($edit['show_close']) ? 1 : 0,
+        'close_overlay' => !empty($edit['close_overlay']) ? 1 : 0,
+        'animation'     => in_array($edit['animation'] ?? '', array('fade','slide','none'), true) ? $edit['animation'] : 'fade',
+        'auto_open'     => array(
+          'enabled'     => !empty($ao_raw['enabled']) ? 1 : 0,
+          'delay_ms'    => max(0, min(30000, (int)($ao_raw['delay_ms'] ?? 3000))),
+          'cookie_days' => max(0, min(365, (int)($ao_raw['cookie_days'] ?? 7))),
+          'guests_only' => !empty($ao_raw['guests_only']) ? 1 : 0,
+          'pages'       => sanitize_text_field($ao_raw['pages'] ?? ''),
+        ),
+      );
+
+      if ($popup_id === 'new' || $popup_id === '0' || $popup_id === '') {
+        $next_id = (int) $out['next_id'];
+        $out['popups'][$next_id] = $popup_data;
+        $out['next_id'] = $next_id + 1;
+        $popup_id = $next_id;
+      } else {
+        $out['popups'][(int)$popup_id] = $popup_data;
+      }
+
+      update_option('langa_tools_popup_settings', $out);
+
+      wp_safe_redirect(add_query_arg(array(
+        'page'     => 'langa-tools-client-popup',
+        'tab'      => 'edit',
+        'popup_id' => (int)$popup_id,
+        'saved'    => '1',
+      ), admin_url('admin.php')));
+      exit;
+    }
+
+    if ($tab === 'triggers' || $tab === 'settings') {
+      $triggers_raw = isset($raw['triggers']) && is_array($raw['triggers']) ? $raw['triggers'] : array();
+      $triggers = array();
+      foreach ($triggers_raw as $tr) {
+        if (!is_array($tr)) continue;
+        $label    = sanitize_text_field($tr['label'] ?? '');
+        $selector = sanitize_text_field($tr['selector'] ?? '');
+        $popup_id = (int)($tr['popup_id'] ?? 0);
+        $event    = in_array(($tr['event'] ?? ''), array('click','hover'), true) ? $tr['event'] : 'click';
+        if ($selector === '' && $popup_id === 0) continue;
+        $triggers[] = array(
+          'label'    => $label,
+          'selector' => $selector,
+          'popup_id' => $popup_id,
+          'event'    => $event,
+        );
+      }
+      $out['triggers'] = $triggers;
+    }
+
+    if ($tab === 'auto_open' || $tab === 'settings') {
+      $ao = isset($raw['auto_open']) && is_array($raw['auto_open']) ? $raw['auto_open'] : array();
+      $out['auto_open'] = array(
+        'enabled'     => !empty($ao['enabled']) ? 1 : 0,
+        'popup_id'    => (int)($ao['popup_id'] ?? 0),
+        'delay_ms'    => max(0, min(30000, (int)($ao['delay_ms'] ?? 3000))),
+        'cookie_days' => max(0, min(365, (int)($ao['cookie_days'] ?? 7))),
+        'guests_only' => !empty($ao['guests_only']) ? 1 : 0,
+        'pages'       => sanitize_text_field($ao['pages'] ?? ''),
+      );
+    }
+
+    if ($tab === 'style') {
+      $s = isset($raw['style']) && is_array($raw['style']) ? $raw['style'] : array();
+      $out['style'] = array(
+        'overlay_bg'     => sanitize_text_field($s['overlay_bg'] ?? ''),
+        'overlay_blur'   => max(0, min(20, (int)($s['overlay_blur'] ?? 0))),
+        'popup_radius'   => max(0, min(40, (int)($s['popup_radius'] ?? 12))),
+        'popup_shadow'   => !empty($s['popup_shadow']) ? 1 : 0,
+        'close_color'    => sanitize_text_field($s['close_color'] ?? ''),
+        'trigger_bg'     => sanitize_text_field($s['trigger_bg'] ?? ''),
+        'trigger_text'   => sanitize_text_field($s['trigger_text'] ?? ''),
+        'trigger_radius' => max(0, min(40, (int)($s['trigger_radius'] ?? 6))),
+        'custom_css'     => wp_strip_all_tags($s['custom_css'] ?? ''),
+      );
+    }
+
+    update_option('langa_tools_popup_settings', $out);
+  }
 
   // Redirect back (module-page saves — Modules-tab toggles already exited above)
   $tab = isset($_POST['current_tab']) ? sanitize_key((string)$_POST['current_tab']) : '';
