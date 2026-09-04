@@ -13,3 +13,7 @@ url: "https://github.com/langacorp/langa-tools-lite"
 license: GPL-2.0-or-later
 version: "1.0.33"
 date-released: "2026-09-04"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.22299156"
+    description: "Concept DOI. It resolves to the latest release, not to this one."

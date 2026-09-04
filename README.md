@@ -1,5 +1,7 @@
 # LANGA Tools Lite
 
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22299156-blue)](https://doi.org/10.5281/zenodo.22299156)
+
 A WordPress plugin that groups the branding, UI/UX and site-management tools
 LANGA uses across its own sites and the sites it looks after: maintenance mode,
 preloader, favicon override, admin bar cleanup, ghost pages, credits, and a
