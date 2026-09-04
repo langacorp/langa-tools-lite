@@ -2,7 +2,7 @@
 /**
  * Plugin Name: LANGA Tools Lite
  * Description: Free UI/UX toolkit for WordPress — admin branding, maintenance mode, custom login, credits. Upgrade to PRO for SEO, Forms, Safer, Cache, Legal, BC, Popup & more.
- * Version: 1.0.32
+ * Version: 1.0.33
  * Author: LANGA
  * Author URI: https://langa.tv
  * License: GPLv2 or later
